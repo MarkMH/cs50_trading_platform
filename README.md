@@ -1,4 +1,5 @@
-# cs50_finalp Marner-Hausen & Struth
+![](https://github.com/MarkMH/cs50_finalp/blob/08be1730c165808fa61f26aa3e5520fb72a59ba9/images/banner_blanco.jpg)
+
 
 <p align="justify" style="text-align:justify"> This repository features the final project of Mark Marner-Hausen and Lennart Struth for the completion of Harvard's introduction to computer science, cs50. <p>
 
