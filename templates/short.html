@@ -1,0 +1,31 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Short
+{% endblock %}
+
+{% block main %}
+    <h2>Go short on your favorite stock.</h2>
+    <form action="/short" method="post">
+        <div class="mb-3">
+            <p class="p-short">
+                Which stock do you want to sell?
+            </p>
+            <input autocomplete="off" autofocus class="form-control mx-auto w-auto" id="symbol" name="symbol" placeholder="Symbol" type="text">
+        </div>
+        <div class="mb-3">
+            <p class="p-short">
+                How many shares to you want to sell short?
+            </p>
+            <input autocomplete="off" autofocus class="form-control mx-auto w-auto" id="shares" name="shares" placeholder="Shares" type="number">
+        </div>
+        <div class="mb-3">
+            <p class="p-short">
+                Specify a date on which you want to buy the shares back.
+            </p>
+            <input autocomplete="off" autofocus class="form-control mx-auto w-auto" id="symbol" name="rebuy_date" placeholder="Rebuy Date" type="date">
+        </div>
+        <p style="margin-bottom:1cm"> </p>
+        <button class="btn btn-dark" type="submit">Go short!</button>
+    </form>
+{% endblock %}

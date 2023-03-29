@@ -1,0 +1,36 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Leaderboard
+{% endblock %}
+
+{% block main %}
+    <h2>The leaderboard.</h2>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Rank</th>
+                <th>Username</th>
+                <th>Stocks</th>
+                <th>Short</th>
+                <th>Cash</th>
+                <th>TOTAL</th>
+            </tr>
+        </thead>
+        <tbody>
+
+            {% for user in performance %}
+            <tr>
+                <td>{{ user.rank }}</td>
+                <td>{{ user.username }}</td>
+                <td>{{ user.stocks }}</td>
+                <td>{{ user.short }}</td>
+                <td>{{ user.cash }}</td>
+                <td>{{ user.total }}</td>
+            </tr>
+
+            {% endfor %}
+
+        </tbody>
+    </table>
+{% endblock %}

@@ -1,40 +1,25 @@
-![](https://github.com/MarkMH/cs50_finalp/blob/08be1730c165808fa61f26aa3e5520fb72a59ba9/images/banner_blanco.jpg)
+# Trade better than your friends!
+#### Video Demo: https://youtu.be/<video_id>
+#### Description:
+In this final project for CS50’s Introduction to Computer Science we, Mark Marner-Hausen and Lennart Struth (me), built a Web Application that simulates an App to trade stocks. The App builds on the last problem set of the course, but comes with significant extensions and improvements. In particular, it allows individual users not only to buy and sell stocks as it was done in the problem set, but also allows hold short positions and to compare the own trading performance to friends' portfolios.
 
+In the following paragraphs, we will explain the project more extensively. The description will explain the additional features that we have implemented and emphasize the differences in the implementation compared to the CS50 Finance web application from the problem set.
 
-<p align="justify" style="text-align:justify"> This repository features the final project of Mark Marner-Hausen and Lennart Struth for the completion of Harvard's introduction to computer science, cs50. <p>
+##### New data source: Finnhub API
+In the Pset we were using IEX as the source for data on current stock prices. We chose to use a different source and implemented helper functions to connect to the Finnhub API. This has several advantages:
+First, the free version is not limited to a 30-day period as is IEX.
+Second, Finnhub allows to not only get the current price, but also to get data on stock candles, that is, a number of prices (open, close, high, low) for a given time period.
+Third, Finnhub provides historical data (up to 1 year in the past) in the free version. This allows to calculate the value of derivatives that depend on past prices. We use this in our implementation of short selling. This is explained in the following paragraph.
 
----
+##### Short selling
+We implemented a feature that is similar to short selling in the real financial market. We have not implemented a margin account, potentially margin calls etc, but decided to implement a simpler version that is similar in the idea of short selling. More specifically, we decided to have the user, when deciding to go short on a stock, specify a date at which the user has to buy the stocks back. Hence, "short selling" in our app goes by the following: The user decides on a stock and the number of shares, the user borrows these shares (for free) and sells them at the current market price. At the same time the user has to specify a date in the future at which the user wants to buy back the shares from the market at the corresponding market price. This is not exactly as short selling works in the real financial market but it implements the same idea, namely that it is possible to insure against a decrease in a stock's value.
+We decided to go for this implementation as it is interesting from a technical point of view. In order to calculate the profit from short positions we need to obtain the value of a stock at the specified rebuy date. This is done in the following way: When "buying" a short position, the order is listed on the index page as an open short order. Whenever reloading the index page, in the backend all open short positions for which the rebuy date has passed since the last time the site was refreshed are closed. That is, the price for the rebuy date (at this point in time it might actually be a few days in the past), is obtained from the Finnhub API, and the profit/loss from the short position is calculated. The order does not appear on the index anymore, but is listed as a closed short position on the history page. To implement this in the backend we had to create additional tables in the data base in order to keep track of the open short orders at any given date and update the table accordingly whenever any user requests the index page.
 
-<p align="justify" style="text-align:justify"> Check out the following link for a guide on how to set up a remote Linux machine on a windows system: 
-<br><li>https://www.youtube.com/watch?v=9yzQCgIdL-Y</li><p>
+##### Helper functions
+We implemented a few additional helper functions. First, we had to implement a function that connects to the Finnhub API to get quotes for stocks. Second, we implemented an additional function that gets stock candles from the Finnhub API. This function takes as argument the symbol as well as a date (as unix time stamp) for the candle. The function then requests the candle for the full day and returns the close price (if existing) or the open price. Since on weekends there is no trading data, the function is implemented to return data on the next working day (Monday). Third, we implemented functions to convert dates from the SQL databases to UNIX time stamps in order to be able to compare time stamps as well as use these as input for the API reqests.
 
----
+##### Leaderboard
+Users have access to a leaderbaord that lists all users ordered by the current value of their portfolio. Users can see how they performed compared to their peers and have a few additional data on their portfolios. This is interesting from a technical viewpoint, too, as it requires to combine the data from all tables in the database on all orders, current stock market values and profits from closed short positions.
 
-<p align="justify" style="text-align:justify"> Use an API to get data on the currency exchange rates. Data on day level might already be sufficient. Check out the following data-source: 
-<br><li>https://exchangeratesapi.io/</li><p>
-
----
-
-<p align="justify" style="text-align:justify"> To host the website we can use pythonanywhere (https://www.pythonanywhere.com). Should be free and allow us to run Flask on their servers. Check out the following video for a quick set-up guide: 
-<br> <li>https://www.youtube.com/watch?v=75-oCKUx3oU</li><p>
-
----
-
-## To Do 
-<p align="justify" style="text-align:justify"> 
-<ul>
-<li>Get rid of all cs50 training wheels!</li>
-<li>Set up a connection to the API data source</li>
-    <ul>
-    <li>Subjects need to be able to look up prices (preferably displayed in a lineplot graph)</li>
-    <li>We need to be able to query prices for a given date </li>
-    </ul>
-<li>Subjects offers must contain a pay-back date </li>
-<li>Create a transaction-feed, that summarizes each trade using lineplot graph </li>
-<li>Upon log-in:</li>
-    <ul>
-    <li>Need to keep track of pending offers </li>
-    <li>If offer pending + pay-back date in the past -> need to execute transaction</li>
-    </ul>
-</ul>
-<p>
+##### Further extensions and visualizations (Mark)
+...

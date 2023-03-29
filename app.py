@@ -6,8 +6,7 @@ from flask_session import Session
 from tempfile import mkdtemp
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from helpers import apology, login_required, lookup, usd
-from datetime import datetime
+from helpers import apology, login_required, lookup, usd, finnhub_quote, finnhub_candle, convert_day_to_unix, current_time_in_unix
 
 # Configure application
 app = Flask(__name__)
@@ -21,11 +20,11 @@ app.config["SESSION_TYPE"] = "filesystem"
 Session(app)
 
 # Configure CS50 Library to use SQLite database
-db = SQL("sqlite:///finance.db")
+db = SQL("sqlite:///database_project.db")
 
 # Make sure API key is set
-if not os.environ.get("API_KEY"):
-    raise RuntimeError("API_KEY not set")
+# if not os.environ.get("API_KEY"):
+#    raise RuntimeError("API_KEY not set")
 
 
 @app.after_request
@@ -41,81 +40,123 @@ def after_request(response):
 @login_required
 def index():
     """Show portfolio of stocks"""
-################################# Button that allows to add cash #################################
 
-    # Initialize total_value
-    total_value = 0
+    # Get user id and portfolio from database
+    user_id = session["user_id"]
+    portfolio = db.execute("SELECT symbol, company_name, SUM(shares) AS shares FROM orders WHERE user_id=? GROUP BY symbol;", user_id)
 
-    # Get Portfolio (List of dictionaries) + Add to total_value
-    portfolio = []
-    for row in db.execute("SELECT * FROM portfolio WHERE user_id = ?", session["user_id"]):
-        row['name'] = lookup(row['symbole'])['name']
-        row['current_price'] = lookup(row['symbole'])['price']
-        row['current_value'] = row['current_price'] * row['quantity']
-        total_value += row['current_value']
-        row['current_price'] = usd(row['current_price'])
-        row['current_value'] = usd(row['current_value'])
-        portfolio.append(row)
+    # Get current stock prices and calculate value of portfolio (for each stock and total)
+    total = 0
+    for stock in portfolio:
+        symbol = stock["symbol"].upper()
+        stock["current_price"] = finnhub_quote(symbol)["price"]
+        stock["total"] = float(stock["current_price"]) * stock["shares"]
+        total = total + stock["total"]
+        stock["total"] = usd(stock["total"])
 
-    # Get cash from users table
-    cash = db.execute("SELECT cash FROM users WHERE id = ?", session["user_id"])[0]['cash']
+    # Get current cash of user
+    cash = db.execute("SELECT cash FROM users WHERE id=?;", user_id)[0]["cash"]
+    cash = float(cash)
 
-    # Calculate total value of portfolio
-    total_value += cash
-    return render_template("index.html", portfolio=portfolio, cash=usd(cash), total_value=usd(total_value))
+    # Calcuate total (portfolio and cash)
+    total = usd(total + cash)
+
+    """ Update open short orders (for all users) and close them if rebuy date is in past """
+    open_short_orders = db.execute("SElECT * FROM short WHERE rebuy_price IS NULL;")
+    # get current time in unix
+    for short in open_short_orders:
+
+        # Convert rebuy_date to unix time stamp of the current day / next trading day at 11pm
+        rebuy_date = convert_day_to_unix(short["rebuy_date"])
+
+        # Get current time as unix time stamp
+        current_time = current_time_in_unix()
+
+        # Close order if rebuy date is in the past
+        if rebuy_date <= current_time:
+
+            short_id = int(short["short_id"])
+            shares = int(short["shares"])
+            symbol = short["symbol"].upper()
+            sell_price = float(short["sell_price"])
+
+            # Get price from Finnhub and calculate profit
+            rebuy_price = float(finnhub_candle(symbol, rebuy_date)["price"])
+            profit = round(shares * (sell_price - rebuy_price), 2)
+
+            # Update data base
+            db.execute("UPDATE short SET rebuy_price = ?, profit = ? WHERE short_id = ?;", rebuy_price, profit, short_id)
+
+    """ List remaining open short orders (only for logged in user) """
+    open_short_orders = db.execute("SELECT * FROM short WHERE rebuy_price IS NULL AND user_id = ?;", user_id)
+    for short in open_short_orders:
+        symbol = short["symbol"].upper()
+        current_price = float(finnhub_quote(symbol)["price"])
+        short["current_profit"] = usd(int(short["shares"]) * (float(short["sell_price"]) - current_price))
+        short["current_price"] = usd(current_price)
+
+    return render_template("index.html", portfolio=portfolio, cash=usd(cash), total=total, shorts=open_short_orders)
 
 
 @app.route("/buy", methods=["GET", "POST"])
 @login_required
 def buy():
     """Buy shares of stock"""
-    if request.method == "POST":
 
-        # Validate Symbol
+    if request.method == "POST":
+        # Ensure that symbol was submitted
         if not request.form.get("symbol"):
-            return apology("please provide a symbol")
-        if lookup(request.form.get("symbol")) == None:
+            return apology("must provide a symbol")
+
+        # Ensure that symbol exists
+        elif not finnhub_quote(request.form.get("symbol")):
             return apology("this symbol does not exist")
 
-        # Validate Quantity
-        if not request.form.get("shares").isdigit():
-            return apology("quantity must be an integer")
+        # Ensure that number of shares was submitted
+        elif not request.form.get("shares"):
+            return apology("must provide number of shares")
 
-        if int(request.form.get("shares")) <= 0:
-            return apology("only positive amounts can be bought")
-
-        # Calculate purchase price
-        name = lookup(request.form.get("symbol"))["name"]
-        symbol = lookup(request.form.get("symbol"))["symbol"]
-        price = lookup(request.form.get("symbol"))["price"]
-        shares = int(request.form.get("shares"))
-        order = shares * price
-
-        # Validate if user has enough cash #current id = 2
-        rows = db.execute("SELECT * FROM users WHERE id = ?", session["user_id"])
-
-        if rows[0]["cash"] < order:
-            return apology("not enough cash for this transaction")
-
-        # Update Cash in SQL users Table
+        # Buy stock for user
         else:
-            db.execute("UPDATE users SET cash=? WHERE id=?", rows[0]["cash"] - order, session["user_id"])
+             # Ensure that number of shares is an integer
+            try:
+                shares = int(request.form.get("shares"))
+            except:
+                return apology("number of shares must be positive integer")
 
-        # Enter Transaction into histoy
-        db.execute("INSERT INTO history (user_id, name, symbole, date, transaction_id, price, quantity) VALUES(?, ?, ?, ?, ?, ?, ?)",
-                   session["user_id"], name, symbol, datetime.now(), "buy", price, shares)
+            # Ensure that number of shares is positive
+            if shares < 1:
+                return apology("number of shares must be positive")
 
-        # Update Portfolio
-        try:
-            qty = db.execute("SELECT quantity FROM portfolio WHERE user_id = ? AND symbole = ?", session["user_id"], symbol)
-            db.execute("UPDATE portfolio SET quantity=? WHERE user_id = ? AND symbole = ?",
-                       qty[0]['quantity'] + shares, session["user_id"], symbol)
-        except:
-            db.execute("INSERT INTO portfolio (user_id, symbole, quantity) VALUES(?, ?, ?)",
-                       session["user_id"], symbol, shares)
+            # Get stock data
+            symbol = request.form.get("symbol").upper()
+            price = finnhub_quote(symbol)["price"]
 
-        return redirect("/")
+            # Check whether symbol exists on API
+            if int(price) == 0:
+                return apology("This symbol does not exist")
 
+            # Get number of shares
+            shares = request.form.get("shares")
+
+            # Get data on user and calculate cost of order
+            cost = int(shares) * float(price)
+
+            # Verify whether user has enough cash for buy order
+            user_id = session["user_id"]
+            cash = db.execute("SELECT cash FROM users WHERE id = ?;", user_id)[0]["cash"]
+            if cash < cost:
+                return apology("you cannot afford this order")
+
+            # Update order table and user's cash
+            else:
+                db.execute("INSERT INTO orders (symbol, price, shares, user_id, date) VALUES (?, ?, ?, ?, datetime());", symbol, price, shares, user_id)
+                db.execute("UPDATE users SET cash = ? WHERE id = ?;", cash - cost, user_id)
+
+            # After successful buy, redirect to index page
+            return redirect("/")
+
+    # User reached route via GET
     else:
         return render_template("buy.html")
 
@@ -124,12 +165,9 @@ def buy():
 @login_required
 def history():
     """Show history of transactions"""
-    # History
-    try:
-        history = db.execute("SELECT * FROM history WHERE user_id = ?", session["user_id"])
-        return render_template("history.html", history=history)
-    except:
-        return apology("No transacton made yet")
+    orders = db.execute("SELECT * FROM orders WHERE user_id = ?;", session["user_id"])
+    closed_short_orders = db.execute("SELECT * FROM short WHERE (rebuy_price IS NOT NULL) AND user_id = ?;", session["user_id"])
+    return render_template("history.html", orders=orders, closed_short_orders=closed_short_orders)
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -144,18 +182,18 @@ def login():
 
         # Ensure username was submitted
         if not request.form.get("username"):
-            return apology("must provide username", 403)
+            return apology("must provide username")
 
         # Ensure password was submitted
         elif not request.form.get("password"):
-            return apology("must provide password", 403)
+            return apology("must provide password")
 
         # Query database for username
         rows = db.execute("SELECT * FROM users WHERE username = ?", request.form.get("username"))
 
         # Ensure username exists and password is correct
         if len(rows) != 1 or not check_password_hash(rows[0]["hash"], request.form.get("password")):
-            return apology("invalid username and/or password", 403)
+            return apology("invalid username and/or password")
 
         # Remember which user has logged in
         session["user_id"] = rows[0]["id"]
@@ -184,12 +222,22 @@ def logout():
 def quote():
     """Get stock quote."""
     if request.method == "POST":
-        if lookup(request.form.get("symbol")) == None:
+
+        # Ensure that symbol was submitted
+        if not request.form.get("symbol"):
+            return apology("must provide a symbol")
+
+        # Ensure that symbol exists
+        elif int(finnhub_quote(request.form.get("symbol"))["price"]) == 0:
             return apology("this symbol does not exist")
+
+        # Show quote to user
         else:
-            symbol = lookup(request.form.get("symbol"))
-            symbol["price"] = usd(symbol["price"])
-            return render_template("quoted.html", symbol=symbol)
+            symbol = request.form.get("symbol").upper()
+            price = finnhub_quote(symbol)["price"]
+            return render_template("quoted.html", symbol=symbol, price=usd(float(price)))
+
+    # User reached route via GET
     else:
         return render_template("quote.html")
 
@@ -197,38 +245,40 @@ def quote():
 @app.route("/register", methods=["GET", "POST"])
 def register():
     """Register user"""
-
-    # Forget any user_id
-    session.clear()
-
-    # Submission from register form
     if request.method == "POST":
 
-        # Validate Input
+        # Get username from the form
+        username = request.form.get("username")
+        registered_users = db.execute("SELECT username FROM users;")
+        registered_usernames = [registered_users[i]["username"] for i in range(len(registered_users))]
+
         # Ensure username was submitted
-        if not request.form.get("username"):
-            return apology("must provide username", 400)
+        if not username:
+            return apology("must provide username")
+
+        # Ensure username is not already used
+        elif username in registered_usernames:
+            return apology("username already used")
+
+        # Get password from user
+        password = request.form.get("password")
+        confirmation = request.form.get("confirmation")
 
         # Ensure password was submitted
-        elif not request.form.get("password"):
-            return apology("must provide password", 400)
+        if not password:
+            return apology("must provide password")
 
-        # Ensure confirmation and password are identical
-        elif request.form.get("password") != request.form.get("confirmation"):
-            return apology("confirmation and password do not coincide", 400)
+        # Ensure password an confirmation match
+        elif password != confirmation:
+            return apology("password and confirmation do not match")
 
-        # Query database for username
-        rows = db.execute("SELECT * FROM users WHERE username = ?", request.form.get("username"))
+        # Insert user and password into database
+        else:
+            db.execute("INSERT INTO users (username, hash) VALUES (?, ?);", username, generate_password_hash(password))
 
-        # Ensure username does not exists
-        if len(rows) >= 1:
-            return apology("username has already been taken", 400)
+        return redirect("/")
 
-        # Save new User
-        db.execute("INSERT INTO users (username, hash) VALUES(?, ?)", request.form.get("username"),
-                   generate_password_hash(request.form.get("password")))
-        return redirect("/login")
-
+    # User reached route via GET (as by clicking a link or via redirect)
     else:
         return render_template("register.html")
 
@@ -237,124 +287,198 @@ def register():
 @login_required
 def sell():
     """Sell shares of stock"""
-##################################### Not in History ##########################################
 
-    symbols = db.execute("SELECT symbole FROM portfolio WHERE user_id = ?", session["user_id"])
+    # Check which stocks the user should be able to select to sell (those that are in the portfolio)
+    user_id = session["user_id"]
+    portfolio = db.execute("SELECT symbol, SUM(shares) AS shares FROM orders WHERE user_id=? GROUP BY symbol;", user_id)
+    stocks_to_sell = [stock["symbol"] for stock in portfolio]
+    print(stocks_to_sell)
 
+    # User sumbitted a form
     if request.method == "POST":
-        # User needs to select a symbol
-        if not request.form.get("symbol"):
-            return apology("Please select a symbol")
+        symbol = request.form.get("symbol")
 
-        # User needs to select a symbol
-        if not request.form.get("shares"):
-            return apology("Please specify a quantity")
+        # Check wether shares input is a number
+        try:
+            shares_to_sell = int(request.form.get("shares"))
+        except:
+            return apology("submit a positive integer")
 
-        # User needs to select a symbol
-        if int(request.form.get("shares")) < 0:
-            return apology("The quantity must be positive")
+        # Check whether number to sell is positive integer
+        if shares_to_sell < 1:
+            return apology("submit positive number")
 
-        # Check if user owns the symbol
-        symbol = None
-        for sym in symbols:
-            if sym["symbole"] == request.form.get("symbol"):
-                symbol = request.form.get("symbol")
-        if not symbol:
-            return apology("You do not own this stock")
+        # Go through all stocks in portfolio to check whether the stock to sell is in the current portfolio
+        for stock in portfolio:
+            if stock["symbol"].upper() == symbol.upper():
 
-        # Check if user has enough shares
-        shares = db.execute("SELECT quantity FROM portfolio WHERE user_id = ? AND symbole = ?",
-                            session["user_id"], symbol)[0]["quantity"]
-        if shares < int(request.form.get("shares")):
-            return apology("You do not own enough shares of this stock")
+                # Check whether there are enough shares in the portfolio
+                if int(stock["shares"]) < shares_to_sell:
+                    return apology("you do not have enough of these shares to sell")
 
-        # Enter Transaction into portfolio-table
-            # Calculate new Quantity
-        qty_new = shares - int(request.form.get("shares"))
+                # Execute order and put sell in orders table (as negative number of shares to sell!) and update cash in users table
+                else:
+                    # Get stock data from API
+                    symbol = symbol.upper()
+                    price = finnhub_quote(symbol)["price"]
 
-        # Delete SQL entry in portfolio-table if new quantity 0
-        if qty_new == 0:
-            db.execute("DELETE FROM portfolio WHERE user_id = ? AND symbole = ?", session["user_id"], symbol)
-        else:
-            db.execute("UPDATE portfolio SET quantity=? WHERE user_id = ? AND symbole = ?", qty_new, session["user_id"], symbol)
+                    # Put order in oders table
+                    db.execute("INSERT INTO orders (symbol, price, shares, user_id, date) VALUES (?, ?, ?, ?, datetime());", symbol, price, -shares_to_sell, user_id)
 
-        # Update cash balance in users-table according to current price
-        price = lookup(symbol)["price"]
-        order = int(request.form.get("shares")) * price
-        cash = db.execute("SELECT cash FROM users WHERE id = ?", session["user_id"])[0]['cash']
-        db.execute("UPDATE users SET cash=? WHERE id=?", cash + order, session["user_id"])
+                    # Update cash in users table
+                    cash = db.execute("SELECT cash FROM users WHERE id = ?;", user_id)[0]["cash"]
+                    new_cash = float(cash) + shares_to_sell * float(price)
+                    db.execute("UPDATE users SET cash = ? WHERE id = ?;", new_cash, user_id)
 
-        return redirect("/")
+                    # Redirect to index
+                    return redirect("/")
+            else:
+                continue
+
+        # If the user does not have the stock to sell in the portfolio at all
+        return apology("you do not have this stock in portfolio")
+
+    # User reached route via GET
     else:
-        return render_template("sell.html", symbols=symbols)
+        return render_template("sell.html", stocks_to_sell=stocks_to_sell)
 
 
 @app.route("/cash", methods=["GET", "POST"])
 @login_required
 def cash():
-    """Add Cash to balance."""
+    """Let user add cash to account"""
+
+    # User reached route via POST (submitting a form)
     if request.method == "POST":
+        if not request.form.get("cash"):
+            return apology("submit a number..")
+        else:
+            add_cash = int(request.form.get("cash"))
+            user_id = session["user_id"]
+            cash = db.execute("SELECT cash FROM users WHERE id = ?;", user_id)[0]["cash"]
+            new_cash = cash + add_cash
+            db.execute("UPDATE users SET cash = ? WHERE id = ?;", new_cash, user_id)
+            return redirect("/")
 
-        # Ensure positive cash
-        if int(request.form.get("cash")) < 0:
-            return apology("cash must be positive", 400)
-
-        # Update cash balance in users-table according to current price
-        cash = db.execute("SELECT cash FROM users WHERE id = ?", session["user_id"])[0]['cash']
-        db.execute("UPDATE users SET cash=? WHERE id=?", cash + int(request.form.get("cash")), session["user_id"])
-        return redirect("/")
-
+    # User reached route via GET
     else:
         return render_template("cash.html")
 
-# API key:  pk_e9a9f0a32f604ab8ab6c53a2d7b0eb7b
 
-# 4. Index Page
-# - Display:
-#   - All stocks owned
-#   - Number of shares for each stock
-#   - Current Price of each stock
-#   - Totoal Value of each holding
-#   - Cuttent Cash balance
-#   - Total Value
+@app.route("/leaderboard", methods = ["GET"])
+@login_required
+def leaderboard():
+    """Let users compare their own performance to other users"""
+    # Initialize list of performances (one entry for each user)
+    performance_list = []
 
-# 3. /buy
-# - If GET: Display a form to buy the stock
-#       - Symbol + Number of Shares
-#       - Check for valid input (no negative number of shares - Symbol should be valid)
-# - If POST: Purchase the stock
-#       - Check if enough Cash for the purchase
-#       - If not return apology
-# - CREATE NEW TABLE: No table in the db that tracks what stocks user own
-#       - Should represent users portfolio
-# - Update Cash in existng TABLE
+    # Get all users and their cash by id
+    users = db.execute("SELECT id, username, cash FROM users;")
 
-# 6. /history of all previous transactions:
-# - One row for each burchase and sell
-#   - Which Stock - How many units - When
-# - Implementation depends on CREATE TABLE
+    # Get all stock orders (aggregated by symbol) for all users
+    stock_orders = db.execute("SELECT user_id, symbol, SUM(shares) AS shares FROM orders GROUP BY symbol, user_id;")
 
-# 2. "/quote" Look up a stock quote
-# - If GET: Display a form to rquest a stock quote
-# - If POST: Use lookup function for the requested stock quote
-# - If lookup sucessfull: Returns a dictionary with name, price and symbol (probably use for loop for display)
-# - If lookup not successfull: Returns NONE - create apology that informs user that this stock does not exist
+    # Get all (finished) short orders
+    short_orders = db.execute("SELECT user_id, SUM(profit) AS profit FROM short WHERE rebuy_price IS NOT NULL GROUP BY user_id;")
 
-# 1. Register (create new template similar to login.html),
-# - Check for errors: If field is blank, passowrt not CONFIRMED, or username is already taken - return different apology
-# - The entry extends the db: Use generate_password_hash and store that in db
+    # For each user calculate value of portfolio
+    for user in users:
+        performance = dict()
+        user_id = user["id"]
+        performance["username"] = user["username"]
+
+        # Calcuate total value of stock portfolio
+        performance["stocks"] = 0
+        for stock_order in stock_orders:
+            if stock_order["user_id"] == user_id:
+                symbol = stock_order["symbol"].upper()
+                price = float(finnhub_quote(symbol)["price"])
+                performance["stocks"] += int(stock_order["shares"]) * price
+
+        # Calculate total profit from short orders
+        performance["short"] = 0
+        for short_order in short_orders:
+            if short_order["user_id"] == user_id:
+                performance["short"] = float(short_order["profit"])
+
+        # Get current cash
+        performance["cash"] = user["cash"]
+
+        # Compute total performance
+        performance["total"] = performance["stocks"] + performance["cash"] + performance["short"]
+
+        # Format nicely
+        performance["stocks"] = usd(performance["stocks"])
+        performance["short"] = usd(performance["short"])
+        performance["cash"] = usd(performance["cash"])
+        performance["total"] = usd(performance["total"])
+
+        # Append individual performance to overall lust
+        performance_list = performance_list + [performance]
+
+    # Sort the full list of performances
+    performance_list_sorted = sorted(performance_list, key=lambda d: d["total"], reverse=True)
+
+    # Assign rank variable
+    rank = 1
+    for performance in performance_list_sorted:
+        performance["rank"] = rank
+        rank += 1
+
+    # Render template and leaderboard
+    return render_template("leaderboard.html", performance=performance_list_sorted)
 
 
-# 5. Sell
-# - If GET: Display Form that specifies symbole and quantity
-# - If POST:
-#   - Check for errors: No negative numbers - User actually has the number of stocks
-#   - Sell Stocks
-#   - Update cash balance accordingly
+@app.route("/short", methods = ["POST", "GET"])
+@login_required
+def short():
+    """Let user go short on a stock"""
 
-# 7. Personal Touch, i.e. new feature
-# - For example:
-#   - Change Passwort
-#   - Add new Cash
-#   - Short Selling?
-#   - Clear all white space for log-in and registration
+    # User submits a form
+    if request.method == "POST":
+        user_id = session["user_id"]
+
+        # Get user input
+        symbol = request.form.get("symbol").upper()
+        shares = request.form.get("shares")
+        rebuy_date = request.form.get("rebuy_date")
+
+        # Check whether user input is valid
+        # Check if symbol provided
+        if not symbol:
+            return apology("submit a symbol")
+
+        # Check if shares provided
+        elif not shares:
+            return apology("submit number of shares")
+
+        # Check if date provided
+        elif not rebuy_date:
+            return apology("submit a rebuy date")
+
+        else:
+            try:
+                shares = int(request.form.get("shares"))
+            except:
+                return apology("submit a positive integer")
+
+            # Check whether number to sell is positive integer
+            if shares < 1:
+                return apology("submit positive number")
+
+            # Get price
+            price = finnhub_quote(request.form.get("symbol"))["price"]
+
+            # Check whether symbol exists
+            if int(price) == 0:
+                return apology("This symbol does not exist")
+
+            # Execute order
+            else:
+                db.execute("INSERT INTO short (user_id, symbol, sell_price, shares, date, rebuy_date) VALUES (?, ?, ?, ?, datetime(), ?);", user_id, symbol, price, shares, rebuy_date)
+
+        return redirect("/")
+
+    # User reached route via GET
+    else:
+        return render_template("short.html")

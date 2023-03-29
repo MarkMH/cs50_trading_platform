@@ -5,10 +5,12 @@
 {% endblock %}
 
 {% block main %}
+    <h2 style="margin-bottom:1cm">Add cash to your account.</h2>
     <form action="/cash" method="post">
         <div class="mb-3">
-            <input class="form-control mx-auto w-auto" name="cash" placeholder="Add Cash" type="number">
+            <input autocomplete="off" autofocus class="form-control mx-auto w-auto" id="add_cash" name="cash" placeholder="Cash" type="number">
         </div>
-        <button class="btn btn-primary" type="submit">Add</button>
+        <p style="margin-bottom:1cm"> </p>
+        <button class="btn btn-dark" type="submit">Get top up!</button>
     </form>
 {% endblock %}

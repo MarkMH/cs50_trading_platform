@@ -1,0 +1,19 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Forex
+{% endblock %}
+
+{% block main %}
+    <h2 style="margin-bottom:1cm">Provide the currency to want to buy (positive amount) or sell (negative amount) for USD.</h2>
+    <form action="/forex" method="post">
+        <div class="mb-3">
+            <input autocomplete="off" autofocus class="form-control mx-auto w-auto" id="currency" name="currency" placeholder="Currency symbol" type="text">
+        </div>
+        <div class="mb-3">
+            <input autocomplete="off" autofocus class="form-control mx-auto w-auto" id="amount" name="amount" placeholder="Amount" type="number">
+        </div>
+        <p style="margin-bottom:1cm"> </p>
+        <button class="btn btn-dark" type="submit">Exchange</button>
+    </form>
+{% endblock %}

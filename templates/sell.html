@@ -5,18 +5,20 @@
 {% endblock %}
 
 {% block main %}
+    <h2 style="margin-bottom:1cm">Sell your stocks.</h2>
     <form action="/sell" method="post">
         <div class="mb-3">
-            <select name="symbol">
-                <option disabled selected>Select Symbol</option>
-                {% for row in symbols %}
-                    <option value="{{ row.symbole }}">{{ row.symbole }}</option>
+            <select autocomplete="off" autofocus class="form-control mx-auto w-auto" id="symbol" name="symbol" placeholder="Symbol" type="text">
+                <!--option selected value disabled placeholder="Symbol"></option-->
+                {% for symbol in stocks_to_sell %}
+                    <option value="{{ symbol }}">{{ symbol }}</option>
                 {% endfor %}
             </select>
         </div>
         <div class="mb-3">
-            <input class="form-control mx-auto w-auto" name="shares" placeholder="Quantity" type="number">
+            <input autocomplete="off" autofocus class="form-control mx-auto w-auto" id="shares" name="shares" placeholder="Shares" type="number">
         </div>
-        <button class="btn btn-primary" type="submit">Sell</button>
+        <p style="margin-bottom:1cm"> </p>
+        <button class="btn btn-dark" type="submit">Sell</button>
     </form>
 {% endblock %}

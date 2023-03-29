@@ -5,10 +5,12 @@
 {% endblock %}
 
 {% block main %}
+    <h2 style="margin-bottom:1cm">Get a quote on the stock of interest.</h2>
     <form action="/quote" method="post">
         <div class="mb-3">
-            <input class="form-control mx-auto w-auto" name="symbol" placeholder="Stock Symbol" type="text">
+            <input autocomplete="off" autofocus class="form-control mx-auto w-auto" id="symbol" name="symbol" placeholder="Symbol" type="text">
         </div>
-        <button class="btn btn-primary" type="submit">Lookup</button>
+        <p style="margin-bottom:1cm"> </p>
+        <button class="btn btn-dark" type="submit">Quote</button>
     </form>
 {% endblock %}

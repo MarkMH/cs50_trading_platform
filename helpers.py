@@ -1,9 +1,16 @@
 import os
 import requests
 import urllib.parse
+import finnhub
+import time
+import datetime
 
 from flask import redirect, render_template, request, session
 from functools import wraps
+
+
+finnhub_client = finnhub.Client(api_key="cgg438hr01qgjoik89jgcgg438hr01qgjoik89k0")
+
 
 
 def apology(message, code=400):
@@ -40,8 +47,8 @@ def lookup(symbol):
 
     # Contact API
     try:
-        api_key = os.environ.get("API_KEY")
-        url = f"https://cloud.iexapis.com/stable/stock/{urllib.parse.quote_plus(symbol)}/quote?token={api_key}"
+        #api_key = os.environ.get("API_KEY")
+        url = f"https://cloud.iexapis.com/stable/stock/{urllib.parse.quote_plus(symbol)}/quote?token=pk_edad9cf38f4b47ab8696fea0d773e42e"
         response = requests.get(url)
         response.raise_for_status()
     except requests.RequestException:
@@ -58,7 +65,52 @@ def lookup(symbol):
     except (KeyError, TypeError, ValueError):
         return None
 
-
 def usd(value):
     """Format value as USD."""
     return f"${value:,.2f}"
+
+
+def finnhub_quote(symbol):
+    return {
+        "price": float(finnhub_client.quote(symbol)['c']),
+        "symbol": symbol.upper()
+    }
+
+
+def finnhub_candle(symbol, date):
+    end_unix = date
+    start_unix = end_unix - 72000
+    candle = finnhub_client.stock_candles(symbol, 'D', start_unix, end_unix)
+    try:
+        return {
+            "price": float(candle['c'][0]),
+            "symbol": symbol.upper()
+        }
+    except:
+        return {
+            "price": float(candle['o'][0]),
+            "symbol": symbol.upper()
+        }
+    
+
+# Convert a datetime to the unix time of that day (or the next weekday) on 11:00 PM
+def convert_day_to_unix(date):
+
+    # Format input date to date format
+    formated_date = datetime.datetime.strptime(date,"%Y-%m-%d")
+
+    # Get unix timestamp for 11PM on that day
+    unix_time = int(datetime.datetime.timestamp(formated_date) + 82800)
+
+    # Return unix time stamp for the next working day (same day for Mo-Fr, next Monday for weekend)
+    if datetime.datetime.weekday(formated_date) <= 4:
+        return unix_time
+    elif datetime.datetime.weekday(formated_date) == 5:
+        return unix_time + 86400 * 2
+    else:
+        return unix_time + 86400
+
+
+# Return the current local time in unix
+def current_time_in_unix():
+    return int(time.time())
