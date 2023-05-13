@@ -6,7 +6,16 @@ from flask_session import Session
 from tempfile import mkdtemp
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from helpers import apology, login_required, lookup, usd, finnhub_quote, finnhub_candle, convert_day_to_unix, current_time_in_unix
+from helpers import (
+    apology,
+    login_required,
+    lookup,
+    usd,
+    finnhub_quote,
+    finnhub_candle,
+    convert_day_to_unix,
+    current_time_in_unix,
+)
 
 # Configure application
 app = Flask(__name__)
@@ -43,7 +52,10 @@ def index():
 
     # Get user id and portfolio from database
     user_id = session["user_id"]
-    portfolio = db.execute("SELECT symbol, company_name, SUM(shares) AS shares FROM orders WHERE user_id=? GROUP BY symbol;", user_id)
+    portfolio = db.execute(
+        "SELECT symbol, company_name, SUM(shares) AS shares FROM orders WHERE user_id=? GROUP BY symbol;",
+        user_id,
+    )
 
     # Get current stock prices and calculate value of portfolio (for each stock and total)
     total = 0
@@ -65,7 +77,6 @@ def index():
     open_short_orders = db.execute("SElECT * FROM short WHERE rebuy_price IS NULL;")
     # get current time in unix
     for short in open_short_orders:
-
         # Convert rebuy_date to unix time stamp of the current day / next trading day at 11pm
         rebuy_date = convert_day_to_unix(short["rebuy_date"])
 
@@ -74,7 +85,6 @@ def index():
 
         # Close order if rebuy date is in the past
         if rebuy_date <= current_time:
-
             short_id = int(short["short_id"])
             shares = int(short["shares"])
             symbol = short["symbol"].upper()
@@ -85,17 +95,32 @@ def index():
             profit = round(shares * (sell_price - rebuy_price), 2)
 
             # Update data base
-            db.execute("UPDATE short SET rebuy_price = ?, profit = ? WHERE short_id = ?;", rebuy_price, profit, short_id)
+            db.execute(
+                "UPDATE short SET rebuy_price = ?, profit = ? WHERE short_id = ?;",
+                rebuy_price,
+                profit,
+                short_id,
+            )
 
     """ List remaining open short orders (only for logged in user) """
-    open_short_orders = db.execute("SELECT * FROM short WHERE rebuy_price IS NULL AND user_id = ?;", user_id)
+    open_short_orders = db.execute(
+        "SELECT * FROM short WHERE rebuy_price IS NULL AND user_id = ?;", user_id
+    )
     for short in open_short_orders:
         symbol = short["symbol"].upper()
         current_price = float(finnhub_quote(symbol)["price"])
-        short["current_profit"] = usd(int(short["shares"]) * (float(short["sell_price"]) - current_price))
+        short["current_profit"] = usd(
+            int(short["shares"]) * (float(short["sell_price"]) - current_price)
+        )
         short["current_price"] = usd(current_price)
 
-    return render_template("index.html", portfolio=portfolio, cash=usd(cash), total=total, shorts=open_short_orders)
+    return render_template(
+        "index.html",
+        portfolio=portfolio,
+        cash=usd(cash),
+        total=total,
+        shorts=open_short_orders,
+    )
 
 
 @app.route("/buy", methods=["GET", "POST"])
@@ -118,7 +143,7 @@ def buy():
 
         # Buy stock for user
         else:
-             # Ensure that number of shares is an integer
+            # Ensure that number of shares is an integer
             try:
                 shares = int(request.form.get("shares"))
             except:
@@ -144,14 +169,24 @@ def buy():
 
             # Verify whether user has enough cash for buy order
             user_id = session["user_id"]
-            cash = db.execute("SELECT cash FROM users WHERE id = ?;", user_id)[0]["cash"]
+            cash = db.execute("SELECT cash FROM users WHERE id = ?;", user_id)[0][
+                "cash"
+            ]
             if cash < cost:
                 return apology("you cannot afford this order")
 
             # Update order table and user's cash
             else:
-                db.execute("INSERT INTO orders (symbol, price, shares, user_id, date) VALUES (?, ?, ?, ?, datetime());", symbol, price, shares, user_id)
-                db.execute("UPDATE users SET cash = ? WHERE id = ?;", cash - cost, user_id)
+                db.execute(
+                    "INSERT INTO orders (symbol, price, shares, user_id, date) VALUES (?, ?, ?, ?, datetime());",
+                    symbol,
+                    price,
+                    shares,
+                    user_id,
+                )
+                db.execute(
+                    "UPDATE users SET cash = ? WHERE id = ?;", cash - cost, user_id
+                )
 
             # After successful buy, redirect to index page
             return redirect("/")
@@ -166,8 +201,13 @@ def buy():
 def history():
     """Show history of transactions"""
     orders = db.execute("SELECT * FROM orders WHERE user_id = ?;", session["user_id"])
-    closed_short_orders = db.execute("SELECT * FROM short WHERE (rebuy_price IS NOT NULL) AND user_id = ?;", session["user_id"])
-    return render_template("history.html", orders=orders, closed_short_orders=closed_short_orders)
+    closed_short_orders = db.execute(
+        "SELECT * FROM short WHERE (rebuy_price IS NOT NULL) AND user_id = ?;",
+        session["user_id"],
+    )
+    return render_template(
+        "history.html", orders=orders, closed_short_orders=closed_short_orders
+    )
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -179,7 +219,6 @@ def login():
 
     # User reached route via POST (as by submitting a form via POST)
     if request.method == "POST":
-
         # Ensure username was submitted
         if not request.form.get("username"):
             return apology("must provide username")
@@ -189,10 +228,14 @@ def login():
             return apology("must provide password")
 
         # Query database for username
-        rows = db.execute("SELECT * FROM users WHERE username = ?", request.form.get("username"))
+        rows = db.execute(
+            "SELECT * FROM users WHERE username = ?", request.form.get("username")
+        )
 
         # Ensure username exists and password is correct
-        if len(rows) != 1 or not check_password_hash(rows[0]["hash"], request.form.get("password")):
+        if len(rows) != 1 or not check_password_hash(
+            rows[0]["hash"], request.form.get("password")
+        ):
             return apology("invalid username and/or password")
 
         # Remember which user has logged in
@@ -222,7 +265,6 @@ def logout():
 def quote():
     """Get stock quote."""
     if request.method == "POST":
-
         # Ensure that symbol was submitted
         if not request.form.get("symbol"):
             return apology("must provide a symbol")
@@ -235,7 +277,9 @@ def quote():
         else:
             symbol = request.form.get("symbol").upper()
             price = finnhub_quote(symbol)["price"]
-            return render_template("quoted.html", symbol=symbol, price=usd(float(price)))
+            return render_template(
+                "quoted.html", symbol=symbol, price=usd(float(price))
+            )
 
     # User reached route via GET
     else:
@@ -246,11 +290,12 @@ def quote():
 def register():
     """Register user"""
     if request.method == "POST":
-
         # Get username from the form
         username = request.form.get("username")
         registered_users = db.execute("SELECT username FROM users;")
-        registered_usernames = [registered_users[i]["username"] for i in range(len(registered_users))]
+        registered_usernames = [
+            registered_users[i]["username"] for i in range(len(registered_users))
+        ]
 
         # Ensure username was submitted
         if not username:
@@ -274,7 +319,11 @@ def register():
 
         # Insert user and password into database
         else:
-            db.execute("INSERT INTO users (username, hash) VALUES (?, ?);", username, generate_password_hash(password))
+            db.execute(
+                "INSERT INTO users (username, hash) VALUES (?, ?);",
+                username,
+                generate_password_hash(password),
+            )
 
         return redirect("/")
 
@@ -290,7 +339,10 @@ def sell():
 
     # Check which stocks the user should be able to select to sell (those that are in the portfolio)
     user_id = session["user_id"]
-    portfolio = db.execute("SELECT symbol, SUM(shares) AS shares FROM orders WHERE user_id=? GROUP BY symbol;", user_id)
+    portfolio = db.execute(
+        "SELECT symbol, SUM(shares) AS shares FROM orders WHERE user_id=? GROUP BY symbol;",
+        user_id,
+    )
     stocks_to_sell = [stock["symbol"] for stock in portfolio]
     print(stocks_to_sell)
 
@@ -311,7 +363,6 @@ def sell():
         # Go through all stocks in portfolio to check whether the stock to sell is in the current portfolio
         for stock in portfolio:
             if stock["symbol"].upper() == symbol.upper():
-
                 # Check whether there are enough shares in the portfolio
                 if int(stock["shares"]) < shares_to_sell:
                     return apology("you do not have enough of these shares to sell")
@@ -323,12 +374,22 @@ def sell():
                     price = finnhub_quote(symbol)["price"]
 
                     # Put order in oders table
-                    db.execute("INSERT INTO orders (symbol, price, shares, user_id, date) VALUES (?, ?, ?, ?, datetime());", symbol, price, -shares_to_sell, user_id)
+                    db.execute(
+                        "INSERT INTO orders (symbol, price, shares, user_id, date) VALUES (?, ?, ?, ?, datetime());",
+                        symbol,
+                        price,
+                        -shares_to_sell,
+                        user_id,
+                    )
 
                     # Update cash in users table
-                    cash = db.execute("SELECT cash FROM users WHERE id = ?;", user_id)[0]["cash"]
+                    cash = db.execute("SELECT cash FROM users WHERE id = ?;", user_id)[
+                        0
+                    ]["cash"]
                     new_cash = float(cash) + shares_to_sell * float(price)
-                    db.execute("UPDATE users SET cash = ? WHERE id = ?;", new_cash, user_id)
+                    db.execute(
+                        "UPDATE users SET cash = ? WHERE id = ?;", new_cash, user_id
+                    )
 
                     # Redirect to index
                     return redirect("/")
@@ -355,7 +416,9 @@ def cash():
         else:
             add_cash = int(request.form.get("cash"))
             user_id = session["user_id"]
-            cash = db.execute("SELECT cash FROM users WHERE id = ?;", user_id)[0]["cash"]
+            cash = db.execute("SELECT cash FROM users WHERE id = ?;", user_id)[0][
+                "cash"
+            ]
             new_cash = cash + add_cash
             db.execute("UPDATE users SET cash = ? WHERE id = ?;", new_cash, user_id)
             return redirect("/")
@@ -365,7 +428,7 @@ def cash():
         return render_template("cash.html")
 
 
-@app.route("/leaderboard", methods = ["GET"])
+@app.route("/leaderboard", methods=["GET"])
 @login_required
 def leaderboard():
     """Let users compare their own performance to other users"""
@@ -376,10 +439,14 @@ def leaderboard():
     users = db.execute("SELECT id, username, cash FROM users;")
 
     # Get all stock orders (aggregated by symbol) for all users
-    stock_orders = db.execute("SELECT user_id, symbol, SUM(shares) AS shares FROM orders GROUP BY symbol, user_id;")
+    stock_orders = db.execute(
+        "SELECT user_id, symbol, SUM(shares) AS shares FROM orders GROUP BY symbol, user_id;"
+    )
 
     # Get all (finished) short orders
-    short_orders = db.execute("SELECT user_id, SUM(profit) AS profit FROM short WHERE rebuy_price IS NOT NULL GROUP BY user_id;")
+    short_orders = db.execute(
+        "SELECT user_id, SUM(profit) AS profit FROM short WHERE rebuy_price IS NOT NULL GROUP BY user_id;"
+    )
 
     # For each user calculate value of portfolio
     for user in users:
@@ -405,7 +472,9 @@ def leaderboard():
         performance["cash"] = user["cash"]
 
         # Compute total performance
-        performance["total"] = performance["stocks"] + performance["cash"] + performance["short"]
+        performance["total"] = (
+            performance["stocks"] + performance["cash"] + performance["short"]
+        )
 
         # Format nicely
         performance["stocks"] = usd(performance["stocks"])
@@ -417,7 +486,9 @@ def leaderboard():
         performance_list = performance_list + [performance]
 
     # Sort the full list of performances
-    performance_list_sorted = sorted(performance_list, key=lambda d: d["total"], reverse=True)
+    performance_list_sorted = sorted(
+        performance_list, key=lambda d: d["total"], reverse=True
+    )
 
     # Assign rank variable
     rank = 1
@@ -429,7 +500,7 @@ def leaderboard():
     return render_template("leaderboard.html", performance=performance_list_sorted)
 
 
-@app.route("/short", methods = ["POST", "GET"])
+@app.route("/short", methods=["POST", "GET"])
 @login_required
 def short():
     """Let user go short on a stock"""
@@ -475,7 +546,14 @@ def short():
 
             # Execute order
             else:
-                db.execute("INSERT INTO short (user_id, symbol, sell_price, shares, date, rebuy_date) VALUES (?, ?, ?, ?, datetime(), ?);", user_id, symbol, price, shares, rebuy_date)
+                db.execute(
+                    "INSERT INTO short (user_id, symbol, sell_price, shares, date, rebuy_date) VALUES (?, ?, ?, ?, datetime(), ?);",
+                    user_id,
+                    symbol,
+                    price,
+                    shares,
+                    rebuy_date,
+                )
 
         return redirect("/")
 

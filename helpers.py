@@ -12,19 +12,28 @@ from functools import wraps
 finnhub_client = finnhub.Client(api_key="cgg438hr01qgjoik89jgcgg438hr01qgjoik89k0")
 
 
-
 def apology(message, code=400):
     """Render message as an apology to user."""
+
     def escape(s):
         """
         Escape special characters.
 
         https://github.com/jacebrowning/memegen#special-characters
         """
-        for old, new in [("-", "--"), (" ", "-"), ("_", "__"), ("?", "~q"),
-                         ("%", "~p"), ("#", "~h"), ("/", "~s"), ("\"", "''")]:
+        for old, new in [
+            ("-", "--"),
+            (" ", "-"),
+            ("_", "__"),
+            ("?", "~q"),
+            ("%", "~p"),
+            ("#", "~h"),
+            ("/", "~s"),
+            ('"', "''"),
+        ]:
             s = s.replace(old, new)
         return s
+
     return render_template("apology.html", top=code, bottom=escape(message)), code
 
 
@@ -34,11 +43,13 @@ def login_required(f):
 
     https://flask.palletsprojects.com/en/1.1.x/patterns/viewdecorators/
     """
+
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if session.get("user_id") is None:
             return redirect("/login")
         return f(*args, **kwargs)
+
     return decorated_function
 
 
@@ -47,7 +58,7 @@ def lookup(symbol):
 
     # Contact API
     try:
-        #api_key = os.environ.get("API_KEY")
+        # api_key = os.environ.get("API_KEY")
         url = f"https://cloud.iexapis.com/stable/stock/{urllib.parse.quote_plus(symbol)}/quote?token=pk_edad9cf38f4b47ab8696fea0d773e42e"
         response = requests.get(url)
         response.raise_for_status()
@@ -60,10 +71,11 @@ def lookup(symbol):
         return {
             "name": quote["companyName"],
             "price": float(quote["latestPrice"]),
-            "symbol": quote["symbol"]
+            "symbol": quote["symbol"],
         }
     except (KeyError, TypeError, ValueError):
         return None
+
 
 def usd(value):
     """Format value as USD."""
@@ -71,33 +83,23 @@ def usd(value):
 
 
 def finnhub_quote(symbol):
-    return {
-        "price": float(finnhub_client.quote(symbol)['c']),
-        "symbol": symbol.upper()
-    }
+    return {"price": float(finnhub_client.quote(symbol)["c"]), "symbol": symbol.upper()}
 
 
 def finnhub_candle(symbol, date):
     end_unix = date
     start_unix = end_unix - 72000
-    candle = finnhub_client.stock_candles(symbol, 'D', start_unix, end_unix)
+    candle = finnhub_client.stock_candles(symbol, "D", start_unix, end_unix)
     try:
-        return {
-            "price": float(candle['c'][0]),
-            "symbol": symbol.upper()
-        }
+        return {"price": float(candle["c"][0]), "symbol": symbol.upper()}
     except:
-        return {
-            "price": float(candle['o'][0]),
-            "symbol": symbol.upper()
-        }
-    
+        return {"price": float(candle["o"][0]), "symbol": symbol.upper()}
+
 
 # Convert a datetime to the unix time of that day (or the next weekday) on 11:00 PM
 def convert_day_to_unix(date):
-
     # Format input date to date format
-    formated_date = datetime.datetime.strptime(date,"%Y-%m-%d")
+    formated_date = datetime.datetime.strptime(date, "%Y-%m-%d")
 
     # Get unix timestamp for 11PM on that day
     unix_time = int(datetime.datetime.timestamp(formated_date) + 82800)
