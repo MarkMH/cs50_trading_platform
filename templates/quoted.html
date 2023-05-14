@@ -2,7 +2,13 @@
 
 {% block title %}
     Quoted
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 {% endblock %}
+
+{% block head %}
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+{% endblock %}
+
 
 {% block main %}
     <form action="/quote" method="get">
@@ -10,4 +16,10 @@
             <p>A share of {{ name }} {{ symbol }} costs {{ price }}.</p>
         </div>
     </form>
+    
+    {% if plot %}
+        <div class="my-5">
+            <img src="{{ plot }}" class="img-fluid" alt="Stock Price Plot">
+        </div>
+    {% endif %}
 {% endblock %}

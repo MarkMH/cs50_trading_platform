@@ -4,6 +4,8 @@ import urllib.parse
 import finnhub
 import time
 import datetime
+import time
+
 
 from flask import redirect, render_template, request, session
 from functools import wraps
@@ -52,31 +54,6 @@ def login_required(f):
 
     return decorated_function
 
-
-def lookup(symbol):
-    """Look up quote for symbol."""
-
-    # Contact API
-    try:
-        # api_key = os.environ.get("API_KEY")
-        url = f"https://cloud.iexapis.com/stable/stock/{urllib.parse.quote_plus(symbol)}/quote?token=pk_edad9cf38f4b47ab8696fea0d773e42e"
-        response = requests.get(url)
-        response.raise_for_status()
-    except requests.RequestException:
-        return None
-
-    # Parse response
-    try:
-        quote = response.json()
-        return {
-            "name": quote["companyName"],
-            "price": float(quote["latestPrice"]),
-            "symbol": quote["symbol"],
-        }
-    except (KeyError, TypeError, ValueError):
-        return None
-
-
 def usd(value):
     """Format value as USD."""
     return f"${value:,.2f}"
@@ -84,6 +61,15 @@ def usd(value):
 
 def finnhub_quote(symbol):
     return {"price": float(finnhub_client.quote(symbol)["c"]), "symbol": symbol.upper()}
+
+
+def get_price_one_year(symbol, date):
+    end_day = int(date.strftime("%s"))
+    start_day = int((date - datetime.timedelta(days=365)).strftime("%s"))
+    
+    return finnhub_client.stock_candles(symbol, 'D', start_day, end_day)
+    
+    
 
 
 def finnhub_candle(symbol, date):
@@ -111,6 +97,7 @@ def convert_day_to_unix(date):
         return unix_time + 86400 * 2
     else:
         return unix_time + 86400
+    
 
 
 # Return the current local time in unix
