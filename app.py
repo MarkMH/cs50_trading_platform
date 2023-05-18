@@ -1,6 +1,7 @@
 import os
 import io
 from flask import Flask, flash, redirect, render_template, request, session
+from matplotlib import pyplot as plt
 from flask_session import Session
 from tempfile import mkdtemp
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -283,23 +284,53 @@ def quote():
             price = finnhub_quote(symbol)["price"]      
             
             df = pd.DataFrame(get_price_one_year(symbol, date.today()))
+            df['t'] = pd.to_datetime(df['t'], unit='s')
+            df['day'] = df['t'].dt.strftime('%Y-%m-%d')
 
-            sns.set_style("whitegrid")
+            # Define which candles will be red and which green
+            # find the rows that are bullish
+            dfup = df[df.c >= df.o]
+            # find the rows that are bearish
+            dfdown = df[df.c < df.o]
+
+            # Create a Candle Stick Plot
+            width  = 0.9   # width of real body
+            width2 = 0.05  # width of shadow
+
+            fig, ax = plt.subplots(figsize=(15,10))
+            # plot the bullish candle stick
+            ax.bar(dfup.day, dfup.c - dfup.o, width, 
+                bottom = dfup.o, edgecolor='g', color='green')
+            ax.bar(dfup.day, dfup.h - dfup.c, width2, 
+                bottom = dfup.c, edgecolor='g', color='green')
+            ax.bar(dfup.day, dfup.l - dfup.o, width2, 
+                bottom = dfup.o, edgecolor='g', color='green')
+            # plot the bearish candle stick
+            ax.bar(dfdown.day, dfdown.c - dfdown.o, width, 
+                bottom = dfdown.o, edgecolor='r', color='red')
+            ax.bar(dfdown.day, dfdown.h - dfdown.o, width2, 
+                bottom = dfdown.o, edgecolor='r', color='red')
+            ax.bar(dfdown.day, dfdown.l - dfdown.c, width2, 
+                bottom = dfdown.c, edgecolor='r', color='red')
+            ax.grid(color='gray')
+
+            """
+            sns.set_style("dark")
             sns.set(rc={'figure.figsize':(12,6)})
 
-            g = sns.FacetGrid(df, height=5, aspect=3)
-            g.map(sns.lineplot, 't', 'c')
-            g.map(sns.lineplot, 't', 'o')
-            g.map(sns.lineplot, 't', 'h')
-            g.map(sns.lineplot, 't', 'l')
-
+            g = sns.FacetGrid(df, col='day', col_wrap=4, height=4, aspect=1)
+            # Create a candle plot for each day in the data
+            g.map(sns.scatterplot, 't', 'c', color='black', s=1)
+            #g.map(lambda df, **kwargs: plt.vlines(df['t'], df['l'], df['h']), color='white', linewidth=1)
             g.set_xlabels('Time')
             g.set_ylabels('Price')
-            g.set(title=symbol + ' Stock Price for Last Year')
-
+            g.set_titles("{col_name}")
+            g.fig.suptitle(f"{symbol} Stock Price for Last Year", y=1.05)
+            plt.tight_layout()
+            """
             # Save the plot as an image
             img = io.BytesIO()
-            g.savefig(img, format="png")
+            fig.savefig(img, format="png")
             img.seek(0)
 
             # Encode the image in base64 and convert it to a data URI
