@@ -6,34 +6,27 @@
 }
 
 
-/* Size for brand */
+.navbar {
+    background-image: url("fotor-ai-2023051811328_02.png");
+    background-repeat: no-repeat;
+    background-size: cover;
+    height: 150px !important;
+}
+
+/* Size for brand, font in white colour and bold*/
 nav .navbar-brand
 {
     font-size: xxx-large;
-    height: 30%;
+    font-weight: bold;
+    color: white !important; 
 }
 
 /* Size of nav-items */
-nav .nav-item
+nav .nav-link
 {
     font-size: x-large;
+    font-weight: bold;
+    color: white !important; 
 }
 
-/* Colors for brand */
-nav .navbar-brand .blue
-{
-    color: #537fbe;
-}
-nav .navbar-brand .red
-{
-    color: #ea433b;
-}
-nav .navbar-brand .yellow
-{
-    color: #f5b82e;
-}
-nav .navbar-brand .green
-{
-    color: #2e944b;
-}
 

@@ -11,6 +11,8 @@ from datetime import date
 import seaborn as sns
 import pandas as pd
 import base64
+from django.conf import settings
+from django.conf.urls.static import static
 
 
 from helpers import (
