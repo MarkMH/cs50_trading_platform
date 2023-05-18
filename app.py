@@ -299,8 +299,6 @@ def quote():
             }, inplace=True
             )
 
-            print(df.head())
-
             # Set the DataFrame index to the datetime column
             df.set_index('t', inplace=True)
 
@@ -310,7 +308,7 @@ def quote():
             # Create the candlestick plot with modified parameters
             fig, ax = mpf.plot(df, type='candle', style='charles', ylabel='Price', returnfig=True,
                    figratio=(25, 14), scale_width_adjustment=dict(candle=0.8, candle_linewidth=0.8),
-                   title=f"{symbol} Stock Price for Last Year")
+                   title=f"{symbol} Stock Price for Last Year - Current Price: ${price}")
 
             # Save the plot as an image
             img = io.BytesIO()

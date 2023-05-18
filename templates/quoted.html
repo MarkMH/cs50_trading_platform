@@ -10,13 +10,7 @@
 {% endblock %}
 
 
-{% block main %}
-    <form action="/quote" method="get">
-        <div class="mb-3">
-            <p>A share of {{ name }} {{ symbol }} costs {{ price }}.</p>
-        </div>
-    </form>
-    
+{% block main %}    
     {% if plot %}
         <div class="my-5">
             <img src="{{ plot }}" class="img-fluid" alt="Stock Price Plot">
