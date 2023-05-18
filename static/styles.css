@@ -7,7 +7,7 @@
 
 
 .navbar {
-    background-image: url("fotor-ai-2023051811328_02.png");
+    background-image: url("fotor_03.jpg");
     background-repeat: no-repeat;
     background-size: cover;
     height: 150px !important;
@@ -18,7 +18,6 @@ nav .navbar-brand
 {
     font-size: xxx-large;
     font-weight: bold;
-    color: white !important; 
 }
 
 /* Size of nav-items */
@@ -26,7 +25,6 @@ nav .nav-link
 {
     font-size: x-large;
     font-weight: bold;
-    color: white !important; 
 }
 
 
