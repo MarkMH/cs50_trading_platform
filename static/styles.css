@@ -9,7 +9,14 @@
 /* Size for brand */
 nav .navbar-brand
 {
-    font-size: xx-large;
+    font-size: xxx-large;
+    height: 30%;
+}
+
+/* Size of nav-items */
+nav .nav-item
+{
+    font-size: x-large;
 }
 
 /* Colors for brand */

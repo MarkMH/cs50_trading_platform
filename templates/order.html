@@ -1,0 +1,50 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Stock Trading 
+{% endblock %}
+
+{% block main %}
+    <h1 style="margin-bottom:1cm">Stock Trading Options</h1>
+    
+    <form>
+        <h2 for="option">Select an option:</h2l>
+        <select id="option" name="option" onchange="showFields()">
+            <option value="">-- Select Option --</option>
+            <option value="quote">Get Quote</option>
+            <option value="buy">Buy</option>
+            <option value="sell">Sell</option>
+            <option value="short">Short</option>
+        </select>
+        
+        <div id="symbolField" style="display: none;">
+            <label for="symbol">Symbol:</label>
+            <input type="text" id="symbol" name="symbol">
+        </div>
+        
+        <div id="quantityField" style="display: none;">
+            <label for="quantity">Quantity:</label>
+            <input type="number" id="quantity" name="quantity">
+        </div>
+        
+        <input type="submit" value="Submit">
+    </form>
+    
+    <script>
+        function showFields() {
+            var option = document.getElementById("option").value;
+            var symbolField = document.getElementById("symbolField");
+            var quantityField = document.getElementById("quantityField");
+
+            symbolField.style.display = "none";
+            quantityField.style.display = "none";
+
+            if (option === "quote") {
+                symbolField.style.display = "block";
+            } else if (option === "buy" || option === "sell" || option === "short") {
+                symbolField.style.display = "block";
+                quantityField.style.display = "block";
+            }
+        }
+    </script>
+{% endblock %}

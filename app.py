@@ -6,6 +6,7 @@ from flask_session import Session
 from tempfile import mkdtemp
 from werkzeug.security import check_password_hash, generate_password_hash
 from db_connect import SQLiteConnector
+import mplfinance as mpf
 from datetime import date
 import seaborn as sns
 import pandas as pd
@@ -285,49 +286,30 @@ def quote():
             
             df = pd.DataFrame(get_price_one_year(symbol, date.today()))
             df['t'] = pd.to_datetime(df['t'], unit='s')
-            df['day'] = df['t'].dt.strftime('%Y-%m-%d')
+            #df['t'] = df['t'].dt.strftime('%Y-%m-%d')
 
-            # Define which candles will be red and which green
-            # find the rows that are bullish
-            dfup = df[df.c >= df.o]
-            # find the rows that are bearish
-            dfdown = df[df.c < df.o]
+            df.rename(columns = {
+                'o': 'Open',
+                'h': 'High',
+                'l': 'Low',
+                'c': 'Close',
+                'v': 'Volume'
+            }, inplace=True
+            )
 
-            # Create a Candle Stick Plot
-            width  = 0.9   # width of real body
-            width2 = 0.05  # width of shadow
+            print(df.head())
 
-            fig, ax = plt.subplots(figsize=(15,10))
-            # plot the bullish candle stick
-            ax.bar(dfup.day, dfup.c - dfup.o, width, 
-                bottom = dfup.o, edgecolor='g', color='green')
-            ax.bar(dfup.day, dfup.h - dfup.c, width2, 
-                bottom = dfup.c, edgecolor='g', color='green')
-            ax.bar(dfup.day, dfup.l - dfup.o, width2, 
-                bottom = dfup.o, edgecolor='g', color='green')
-            # plot the bearish candle stick
-            ax.bar(dfdown.day, dfdown.c - dfdown.o, width, 
-                bottom = dfdown.o, edgecolor='r', color='red')
-            ax.bar(dfdown.day, dfdown.h - dfdown.o, width2, 
-                bottom = dfdown.o, edgecolor='r', color='red')
-            ax.bar(dfdown.day, dfdown.l - dfdown.c, width2, 
-                bottom = dfdown.c, edgecolor='r', color='red')
-            ax.grid(color='gray')
+            # Set the DataFrame index to the datetime column
+            df.set_index('t', inplace=True)
 
-            """
-            sns.set_style("dark")
-            sns.set(rc={'figure.figsize':(12,6)})
+            # Create the candlestick plot
+            mpf.plot(df, type='candle', style='charles', ylabel='Price')
 
-            g = sns.FacetGrid(df, col='day', col_wrap=4, height=4, aspect=1)
-            # Create a candle plot for each day in the data
-            g.map(sns.scatterplot, 't', 'c', color='black', s=1)
-            #g.map(lambda df, **kwargs: plt.vlines(df['t'], df['l'], df['h']), color='white', linewidth=1)
-            g.set_xlabels('Time')
-            g.set_ylabels('Price')
-            g.set_titles("{col_name}")
-            g.fig.suptitle(f"{symbol} Stock Price for Last Year", y=1.05)
-            plt.tight_layout()
-            """
+            # Create the candlestick plot with modified parameters
+            fig, ax = mpf.plot(df, type='candle', style='charles', ylabel='Price', returnfig=True,
+                   figratio=(25, 14), scale_width_adjustment=dict(candle=0.8, candle_linewidth=0.8),
+                   title=f"{symbol} Stock Price for Last Year")
+
             # Save the plot as an image
             img = io.BytesIO()
             fig.savefig(img, format="png")
@@ -622,3 +604,4 @@ def short():
     # User reached route via GET
     else:
         return render_template("short.html")
+    
