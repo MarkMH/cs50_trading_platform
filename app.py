@@ -7,12 +7,15 @@ from tempfile import mkdtemp
 from werkzeug.security import check_password_hash, generate_password_hash
 from db_connect import SQLiteConnector
 import mplfinance as mpf
-from datetime import date
+from datetime import date, datetime
 import seaborn as sns
 import pandas as pd
 import base64
 from django.conf import settings
 from django.conf.urls.static import static
+import matplotlib.pyplot as plt
+# Import ploty express as px
+import plotly.express as px
 
 
 from helpers import (
@@ -124,9 +127,9 @@ def index():
 
     
     """ Create a plot that displays the realized Profit in % of overall cash intake """
-    # Get all orders of user from database:
+    # Get all orders sell orders along with average buy price:
     profit_from_long = db_connection.execute(
-                    """SELECT o.*, avg_values.avg_p
+                    """SELECT shares, price, strftime('%Y-%m-%d', date) AS formatted_date,  avg_values.avg_p
                     FROM orders o
                     JOIN (
                         SELECT symbol, AVG(price) AS avg_p
@@ -136,8 +139,88 @@ def index():
                     ) avg_values ON o.symbol = avg_values.symbol
                     WHERE o.shares < 0 and user_id=?;""",
                      (user_id,)
-            )
-    print(profit_from_long)
+    )
+    
+    # Get all executed short orders
+    profit_from_short = db_connection.execute(
+                    "SELECT rebuy_date, profit FROM short WHERE user_id=? and rebuy_price IS NOT NULL;", 
+                    (user_id,)
+    )
+   
+    # Get the total amount of cash upload in order to calculate the profit in %
+    total_cash_upload = db_connection.execute(
+                    "SELECT SUM(cash_amount) AS total_cash_upload FROM cash_upload WHERE user_id=?;", 
+                    (user_id,)
+    )
+
+    # Create dataframe for long orders and short orders
+    profit_from_long = pd.DataFrame(profit_from_long)
+    profit_from_short = pd.DataFrame(profit_from_short)
+
+    # Check if profit_from_long is empty
+    if not profit_from_long.empty:
+        profit_from_long.rename(columns={"formatted_date": "date"}, inplace=True)
+        profit_from_long["profit"] = profit_from_long["shares"] * (profit_from_long["price"] - profit_from_long["avg_p"])
+        profit_from_long = profit_from_long[["date", "profit"]]
+
+    # Format dataframe short orders
+    if not profit_from_short.empty:
+        profit_from_short.rename(columns={"rebuy_date": "date"}, inplace=True)
+
+    # Concatenate long and short orders
+    profit = pd.concat([profit_from_long, profit_from_short])
+    
+
+    if profit.empty:
+        # Create a dark-themed figure
+        plt.style.use('bmh')
+
+        # Create the plot
+        fig, ax = plt.subplots()
+
+        # Set the figure text
+        ax.text(0.5, 0.5, "No data available yet", fontsize=16, ha='center')
+
+        # Remove the axis labels and ticks
+        ax.axis('off')
+
+    else:
+        # Calculated cumulated profit grouped by date keep the date
+        profit = profit.groupby("date").sum()
+
+        # Accumulate profit for each date
+        profit["profit"] = profit["profit"].cumsum()
+
+        # Calculate profit in % of the total cash upload
+        profit["profit"] = profit["profit"] / total_cash_upload[0]["total_cash_upload"] * 100
+
+        # Sort profit DataFrame by index (date)
+        profit = profit.sort_values(by='date', ascending=True)
+
+        # Create a dark-themed figure
+        plt.style.use('bmh')
+
+        # Create the line plot
+        plt.plot(profit.index, profit['profit'], color='lime', linewidth=2)
+
+        # Set the plot title and axis labels
+        plt.xlabel('Date', fontsize=12)
+        plt.ylabel('Profit (%)', fontsize=12)
+
+        # Show grid lines
+        plt.grid(True, color='white', alpha=0.2)
+
+        # Save the plot as an image
+
+    img_bytes = io.BytesIO()
+    plt.savefig(img_bytes, format='png')
+    # Clear the current plot
+    plt.clf()
+    img_bytes.seek(0)
+
+    # Encode the image in base64
+    encoded = base64.b64encode(img_bytes.read()).decode("utf-8")
+    data_uri = "data:image/png;base64,{}".format(encoded)
 
 
     return render_template(
@@ -146,6 +229,7 @@ def index():
         cash=usd(cash),
         total=total,
         shorts=open_short_orders,
+        plot=data_uri
     )
 
 
@@ -387,9 +471,14 @@ def register():
                 generate_password_hash(password),)
             )
 
+            # Get user id
+            user_id = db_connection.execute(
+                "SELECT id FROM users WHERE username=?;", (username,)
+            )[0]["id"]
+
             db_connection.execute(
                 "INSERT INTO cash_upload (user_id, date, cash_amount) VALUES (?, ?, ?);",
-                (username,
+                (user_id,
                  date.today(),
                     10000,)
             )

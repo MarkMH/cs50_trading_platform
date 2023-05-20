@@ -82,4 +82,14 @@
         </tbody>
     </table>
 
+    <p style="margin-bottom:2cm"></p>
+
+    <h2 style="margin-bottom:1cm">Timeline of realized profit as a percentage of total cash inflow.</h2>
+
+    {% if plot %}
+    <div class="my-5">
+        <img src="{{ plot }}" class="img-fluid" alt="Stock Price Plot">
+    </div>
+    {% endif %}
+
 {% endblock %}
