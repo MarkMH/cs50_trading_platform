@@ -11,10 +11,10 @@
             <tr>
                 <th>Rank</th>
                 <th>Username</th>
-                <th>Stocks</th>
-                <th>Short</th>
-                <th>Cash</th>
-                <th>TOTAL</th>
+                <th>Realized Long Profits</th>
+                <th>Realized Short Profits</th>
+                <th>Total Cash Intake</th>
+                <th>Total Profit in %</th>
             </tr>
         </thead>
         <tbody>
@@ -23,10 +23,10 @@
             <tr>
                 <td>{{ user.rank }}</td>
                 <td>{{ user.username }}</td>
-                <td>{{ user.stocks }}</td>
-                <td>{{ user.short }}</td>
-                <td>{{ user.cash }}</td>
-                <td>{{ user.total }}</td>
+                <td>$ {{ user.profit_long }}</td>
+                <td>$ {{ user.profit_short }}</td>
+                <td>$ {{ user.cash_amount }}</td>
+                <td>{{ user.total_profit }} %</td>
             </tr>
 
             {% endfor %}

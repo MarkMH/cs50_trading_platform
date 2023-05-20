@@ -14,6 +14,7 @@ import base64
 from django.conf import settings
 from django.conf.urls.static import static
 import matplotlib.pyplot as plt
+import seaborn as sns
 # Import ploty express as px
 import plotly.express as px
 
@@ -197,21 +198,29 @@ def index():
         # Sort profit DataFrame by index (date)
         profit = profit.sort_values(by='date', ascending=True)
 
-        # Create a dark-themed figure
-        plt.style.use('bmh')
+        # Set the style to a modern look with light dark background
+        sns.set_style('darkgrid')
+        sns.set_palette('bright')
 
-        # Create the line plot
-        plt.plot(profit.index, profit['profit'], color='lime', linewidth=2)
+        # Create the scatter plot
+        plt.scatter(profit.index, profit['profit'], c='springgreen', linewidth=2)
+        plt.scatter(profit.index[profit['profit'] < 0], profit['profit'][profit['profit'] < 0], c='red', linewidth=2)
 
         # Set the plot title and axis labels
         plt.xlabel('Date', fontsize=12)
         plt.ylabel('Profit (%)', fontsize=12)
 
+        # Adjust X-axis ticks
+        plt.xticks(rotation=45, ha='right', fontsize=8)
+
+        # Adjust figure size and layout
+        plt.gcf().set_size_inches(10, 6)
+        plt.tight_layout()
+
         # Show grid lines
         plt.grid(True, color='white', alpha=0.2)
 
-        # Save the plot as an image
-
+    # Save the plot as an image
     img_bytes = io.BytesIO()
     plt.savefig(img_bytes, format='png')
     # Clear the current plot
@@ -409,17 +418,20 @@ def quote():
 
             # Create the candlestick plot with modified parameters
             fig, ax = mpf.plot(df, type='candle', style='charles', ylabel='Price', returnfig=True,
-                   figratio=(25, 14), scale_width_adjustment=dict(candle=0.8, candle_linewidth=0.8),
+                   figratio=(42, 21), scale_width_adjustment=dict(candle=0.8, candle_linewidth=0.8),
                    title=f"{symbol} Stock Price for Last Year - Current Price: ${price}")
 
             # Save the plot as an image
             img = io.BytesIO()
             fig.savefig(img, format="png")
+            fig.clf()
             img.seek(0)
 
             # Encode the image in base64 and convert it to a data URI
             encoded = base64.b64encode(img.getvalue()).decode("utf-8")
             data_uri = "data:image/png;base64,{}".format(encoded)
+
+
 
             return render_template(
                 "quoted.html", symbol=symbol, price=usd(float(price)), plot=data_uri
@@ -598,72 +610,67 @@ def cash():
 @login_required
 def leaderboard():
     """Let users compare their own performance to other users"""
-    # Initialize list of performances (one entry for each user)
-    performance_list = []
+    ## Get Realized Long-Profits of all users 
+    # Get all sell orders with average buy price
+    profit_from_long = pd.DataFrame(db_connection.execute(
+                    """SELECT user_id, shares, price, avg_values.avg_p
+                    FROM orders o
+                    JOIN (
+                        SELECT symbol, AVG(price) AS avg_p
+                        FROM orders
+                        WHERE shares > 0
+                        GROUP BY symbol
+                    ) avg_values ON o.symbol = avg_values.symbol
+                    WHERE o.shares < 0;"""
+    ))
+    
+    # For each user_id calculate the realized profit from long orders
+    if not profit_from_long.empty:
+        profit_from_long["profit_long"] = (profit_from_long["price"] - profit_from_long["avg_p"]) * profit_from_long["shares"]
+        profit_from_long = profit_from_long[["user_id", "profit_long"]]
+        profit_from_long = profit_from_long.groupby("user_id").sum()
 
-    # Get all users and their cash by id
-    users = db_connection.execute("SELECT id, username, cash FROM users;")
+    ## Get Realized Short-Profits of all users
+    profit_from_short = pd.DataFrame(db_connection.execute(
+                    "SELECT user_id, profit FROM short WHERE rebuy_price IS NOT NULL;"
+    ))
+    if not profit_from_short.empty:
+        profit_from_short.rename(columns={"profit": "profit_short"}, inplace=True)
+        profit_from_short = profit_from_short.groupby("user_id").sum()
 
-    # Get all stock orders (aggregated by symbol) for all users
-    stock_orders = db_connection.execute(
-        "SELECT user_id, symbol, SUM(shares) AS shares FROM orders GROUP BY symbol, user_id;"
-    )
+    ## Get total Cash Uploads of all users
+    cash_uploads = pd.DataFrame(db_connection.execute(
+                    "SELECT user_id, cash_amount FROM cash_upload;"
+    ))
+    if not cash_uploads.empty:
+        cash_uploads = cash_uploads.groupby("user_id").sum()
 
-    # Get all (finished) short orders
-    short_orders = db_connection.execute(
-        "SELECT user_id, SUM(profit) AS profit FROM short WHERE rebuy_price IS NOT NULL GROUP BY user_id;"
-    )
+    ## Merge profit_from_long, profit_from_short into one dataframe based on user_id
+    df_leaderboard = pd.merge(profit_from_long, profit_from_short,  on="user_id", how="outer")
 
-    # For each user calculate value of portfolio
-    for user in users:
-        performance = dict()
-        user_id = user["id"]
-        performance["username"] = user["username"]
+    ## Merge df with cash_uploads into one dataframe based on user_id
+    df_leaderboard = pd.merge(df_leaderboard, cash_uploads, on="user_id", how="outer")
 
-        # Calcuate total value of stock portfolio
-        performance["stocks"] = 0
-        for stock_order in stock_orders:
-            if stock_order["user_id"] == user_id:
-                symbol = stock_order["symbol"].upper()
-                price = float(finnhub_quote(symbol)["price"])
-                performance["stocks"] += int(stock_order["shares"]) * price
+    ## Add username to dataframe
+    users = pd.DataFrame(db_connection.execute("SELECT id, username FROM users;"))
+    users.rename(columns={"id": "user_id"}, inplace=True)
+    df_leaderboard = pd.merge(df_leaderboard, users, on="user_id", how="outer")
 
-        # Calculate total profit from short orders
-        performance["short"] = 0
-        for short_order in short_orders:
-            if short_order["user_id"] == user_id:
-                performance["short"] = float(short_order["profit"])
+    ## Replace NaN with 0
+    df_leaderboard.fillna(0, inplace=True)
 
-        # Get current cash
-        performance["cash"] = user["cash"]
+    ## Calculate total profit in percent of cash_uploads and round to 2 decimals
+    df_leaderboard["total_profit"] = ((df_leaderboard["profit_long"] + df_leaderboard["profit_short"]) / df_leaderboard["cash_amount"] * 100).round(2)
+    
+    ## Order dataframe by total_profit and add column "rank"
+    df_leaderboard.sort_values(by="total_profit", ascending=False, inplace=True)
+    df_leaderboard["rank"] = range(1, len(df_leaderboard) + 1)
 
-        # Compute total performance
-        performance["total"] = (
-            performance["stocks"] + performance["cash"] + performance["short"]
-        )
-
-        # Format nicely
-        performance["stocks"] = usd(performance["stocks"])
-        performance["short"] = usd(performance["short"])
-        performance["cash"] = usd(performance["cash"])
-        performance["total"] = usd(performance["total"])
-
-        # Append individual performance to overall lust
-        performance_list = performance_list + [performance]
-
-    # Sort the full list of performances
-    performance_list_sorted = sorted(
-        performance_list, key=lambda d: d["total"], reverse=True
-    )
-
-    # Assign rank variable
-    rank = 1
-    for performance in performance_list_sorted:
-        performance["rank"] = rank
-        rank += 1
+    ## Convert dataframe to dict for rendering
+    dict_leaderboard = df_leaderboard.to_dict(orient="records")
 
     # Render template and leaderboard
-    return render_template("leaderboard.html", performance=performance_list_sorted)
+    return render_template("leaderboard.html", performance=dict_leaderboard)
 
 
 @app.route("/short", methods=["POST", "GET"])
