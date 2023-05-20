@@ -122,6 +122,24 @@ def index():
         )
         short["current_price"] = usd(current_price)
 
+    
+    """ Create a plot that displays the realized Profit in % of overall cash intake """
+    # Get all orders of user from database:
+    profit_from_long = db_connection.execute(
+                    """SELECT o.*, avg_values.avg_p
+                    FROM orders o
+                    JOIN (
+                        SELECT symbol, AVG(price) AS avg_p
+                        FROM orders
+                        WHERE shares > 0
+                        GROUP BY symbol
+                    ) avg_values ON o.symbol = avg_values.symbol
+                    WHERE o.shares < 0 and user_id=?;""",
+                     (user_id,)
+            )
+    print(profit_from_long)
+
+
     return render_template(
         "index.html",
         portfolio=portfolio,
@@ -369,6 +387,13 @@ def register():
                 generate_password_hash(password),)
             )
 
+            db_connection.execute(
+                "INSERT INTO cash_upload (user_id, date, cash_amount) VALUES (?, ?, ?);",
+                (username,
+                 date.today(),
+                    10000,)
+            )
+
         return redirect("/")
 
     # User reached route via GET (as by clicking a link or via redirect)
@@ -464,7 +489,15 @@ def cash():
                 "cash"
             ]
             new_cash = cash + add_cash
+
+            # Update working cash in users table
             db_connection.execute("UPDATE users SET cash = ? WHERE id = ?;", (new_cash, user_id,))
+
+            # Make an entry in cash_upload table for calculation of total cash intake
+            db_connection.execute("INSERT INTO cash_upload (user_id, date, cash_amount) VALUES (?, ?, ?);",
+                                    (user_id,
+                                     date.today(),
+                                     add_cash,))
             return redirect("/")
 
     # User reached route via GET
