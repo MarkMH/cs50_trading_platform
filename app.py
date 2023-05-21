@@ -15,6 +15,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 import matplotlib.pyplot as plt
 import seaborn as sns
+
 # Import ploty express as px
 import plotly.express as px
 
@@ -27,7 +28,7 @@ from helpers import (
     finnhub_candle,
     convert_day_to_unix,
     current_time_in_unix,
-    get_price_one_year
+    get_price_one_year,
 )
 
 # Configure application
@@ -41,12 +42,9 @@ app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_TYPE"] = "filesystem"
 Session(app)
 
-# Configure CS50 Library to use SQLite database
-# Make sure API key is set
-# if not os.environ.get("API_KEY"):
-#    raise RuntimeError("API_KEY not set")
-# Configure CS50 Library to use SQLite database
+# Configure own Class to hanndle DB connection avoiding CS50 SQL Library 
 db_connection = SQLiteConnector()
+
 
 @app.after_request
 def after_request(response):
@@ -86,7 +84,9 @@ def index():
     total = usd(total + cash)
 
     """ Update open short orders (for all users) and close them if rebuy date is in past """
-    open_short_orders = db_connection.execute("SElECT * FROM short WHERE rebuy_price IS NULL;")
+    open_short_orders = db_connection.execute(
+        "SElECT * FROM short WHERE rebuy_price IS NULL;"
+    )
     # get current time in unix
     for short in open_short_orders:
         # Convert rebuy_date to unix time stamp of the current day / next trading day at 11pm
@@ -109,9 +109,11 @@ def index():
             # Update data base
             db_connection.execute(
                 "UPDATE short SET rebuy_price = ?, profit = ? WHERE short_id = ?;",
-                (rebuy_price,
-                profit,
-                short_id,)
+                (
+                    rebuy_price,
+                    profit,
+                    short_id,
+                ),
             )
 
     """ List remaining open short orders (only for logged in user) """
@@ -126,11 +128,10 @@ def index():
         )
         short["current_price"] = usd(current_price)
 
-    
     """ Create a plot that displays the realized Profit in % of overall cash intake """
     # Get all orders sell orders along with average buy price:
     profit_from_long = db_connection.execute(
-                    """SELECT shares, price, strftime('%Y-%m-%d', date) AS formatted_date,  avg_values.avg_p
+        """SELECT shares, price, strftime('%Y-%m-%d', date) AS formatted_date,  avg_values.avg_p
                     FROM orders o
                     JOIN (
                         SELECT symbol, AVG(price) AS avg_p
@@ -139,19 +140,19 @@ def index():
                         GROUP BY symbol
                     ) avg_values ON o.symbol = avg_values.symbol
                     WHERE o.shares < 0 and user_id=?;""",
-                     (user_id,)
+        (user_id,),
     )
-    
+
     # Get all executed short orders
     profit_from_short = db_connection.execute(
-                    "SELECT rebuy_date, profit FROM short WHERE user_id=? and rebuy_price IS NOT NULL;", 
-                    (user_id,)
+        "SELECT rebuy_date, profit FROM short WHERE user_id=? and rebuy_price IS NOT NULL;",
+        (user_id,),
     )
-   
+
     # Get the total amount of cash upload in order to calculate the profit in %
     total_cash_upload = db_connection.execute(
-                    "SELECT SUM(cash_amount) AS total_cash_upload FROM cash_upload WHERE user_id=?;", 
-                    (user_id,)
+        "SELECT SUM(cash_amount) AS total_cash_upload FROM cash_upload WHERE user_id=?;",
+        (user_id,),
     )
 
     # Create dataframe for long orders and short orders
@@ -161,7 +162,9 @@ def index():
     # Check if profit_from_long is empty
     if not profit_from_long.empty:
         profit_from_long.rename(columns={"formatted_date": "date"}, inplace=True)
-        profit_from_long["profit"] = profit_from_long["shares"] * (profit_from_long["price"] - profit_from_long["avg_p"])
+        profit_from_long["profit"] = profit_from_long["shares"] * (
+            profit_from_long["price"] - profit_from_long["avg_p"]
+        )
         profit_from_long = profit_from_long[["date", "profit"]]
 
     # Format dataframe short orders
@@ -170,20 +173,19 @@ def index():
 
     # Concatenate long and short orders
     profit = pd.concat([profit_from_long, profit_from_short])
-    
 
     if profit.empty:
         # Create a dark-themed figure
-        plt.style.use('bmh')
+        plt.style.use("bmh")
 
         # Create the plot
         fig, ax = plt.subplots()
 
         # Set the figure text
-        ax.text(0.5, 0.5, "No data available yet", fontsize=16, ha='center')
+        ax.text(0.5, 0.5, "No data available yet", fontsize=16, ha="center")
 
         # Remove the axis labels and ticks
-        ax.axis('off')
+        ax.axis("off")
 
     else:
         # Calculated cumulated profit grouped by date keep the date
@@ -193,36 +195,43 @@ def index():
         profit["profit"] = profit["profit"].cumsum()
 
         # Calculate profit in % of the total cash upload
-        profit["profit"] = profit["profit"] / total_cash_upload[0]["total_cash_upload"] * 100
+        profit["profit"] = (
+            profit["profit"] / total_cash_upload[0]["total_cash_upload"] * 100
+        )
 
         # Sort profit DataFrame by index (date)
-        profit = profit.sort_values(by='date', ascending=True)
+        profit = profit.sort_values(by="date", ascending=True)
 
         # Set the style to a modern look with light dark background
-        sns.set_style('darkgrid')
-        sns.set_palette('bright')
+        sns.set_style("darkgrid")
+        sns.set_palette("bright")
 
         # Create the scatter plot
-        plt.scatter(profit.index, profit['profit'], c='springgreen', linewidth=2)
-        plt.scatter(profit.index[profit['profit'] < 0], profit['profit'][profit['profit'] < 0], c='red', linewidth=2)
+        plt.scatter(profit.index, profit["profit"], c="springgreen", linewidth=2)
+        plt.scatter(
+            profit.index[profit["profit"] < 0],
+            profit["profit"][profit["profit"] < 0],
+            c="red",
+            linewidth=2,
+        )
 
         # Set the plot title and axis labels
-        plt.xlabel('Date', fontsize=12)
-        plt.ylabel('Profit (%)', fontsize=12)
+        plt.xlabel("Date", fontsize=12)
+        plt.ylabel("Profit (%)", fontsize=12)
 
         # Adjust X-axis ticks
-        plt.xticks(rotation=45, ha='right', fontsize=8)
+        plt.xticks(rotation=45, ha="right", fontsize=8)
 
         # Adjust figure size and layout
         plt.gcf().set_size_inches(10, 6)
         plt.tight_layout()
 
         # Show grid lines
-        plt.grid(True, color='white', alpha=0.2)
+        plt.grid(True, color="white", alpha=0.2)
 
     # Save the plot as an image
     img_bytes = io.BytesIO()
-    plt.savefig(img_bytes, format='png')
+    plt.savefig(img_bytes, format="png")
     # Clear the current plot
     plt.clf()
     img_bytes.seek(0)
@@ -231,14 +240,13 @@ def index():
     encoded = base64.b64encode(img_bytes.read()).decode("utf-8")
     data_uri = "data:image/png;base64,{}".format(encoded)
 
-
     return render_template(
         "index.html",
         portfolio=portfolio,
         cash=usd(cash),
         total=total,
         shorts=open_short_orders,
-        plot=data_uri
+        plot=data_uri,
     )
 
 
@@ -288,9 +296,9 @@ def buy():
 
             # Verify whether user has enough cash for buy order
             user_id = session["user_id"]
-            cash = db_connection.execute("SELECT cash FROM users WHERE id = ?;", (user_id, ))[0][
-                "cash"
-            ]
+            cash = db_connection.execute(
+                "SELECT cash FROM users WHERE id = ?;", (user_id,)
+            )[0]["cash"]
             if cash < cost:
                 return apology("you cannot afford this order")
 
@@ -298,13 +306,19 @@ def buy():
             else:
                 db_connection.execute(
                     "INSERT INTO orders (symbol, price, shares, user_id, date) VALUES (?, ?, ?, ?, datetime());",
-                    (symbol,
-                    price,
-                    shares,
-                    user_id,)
+                    (
+                        symbol,
+                        price,
+                        shares,
+                        user_id,
+                    ),
                 )
                 db_connection.execute(
-                    "UPDATE users SET cash = ? WHERE id = ?;", (cash - cost, user_id,)
+                    "UPDATE users SET cash = ? WHERE id = ?;",
+                    (
+                        cash - cost,
+                        user_id,
+                    ),
                 )
 
             # After successful buy, redirect to index page
@@ -319,10 +333,12 @@ def buy():
 @login_required
 def history():
     """Show history of transactions"""
-    orders = db_connection.execute("SELECT * FROM orders WHERE user_id = ?;", (session["user_id"],))
+    orders = db_connection.execute(
+        "SELECT * FROM orders WHERE user_id = ?;", (session["user_id"],)
+    )
     closed_short_orders = db_connection.execute(
         "SELECT * FROM short WHERE (rebuy_price IS NOT NULL) AND user_id = ?;",
-        (session["user_id"],)
+        (session["user_id"],),
     )
     return render_template(
         "history.html", orders=orders, closed_short_orders=closed_short_orders
@@ -393,33 +409,42 @@ def quote():
             return apology("this symbol does not exist")
 
         # Show quote to user
-        else:     
+        else:
             symbol = request.form.get("symbol").upper()
-            price = finnhub_quote(symbol)["price"]      
-            
-            df = pd.DataFrame(get_price_one_year(symbol, date.today()))
-            df['t'] = pd.to_datetime(df['t'], unit='s')
-            #df['t'] = df['t'].dt.strftime('%Y-%m-%d')
+            price = finnhub_quote(symbol)["price"]
 
-            df.rename(columns = {
-                'o': 'Open',
-                'h': 'High',
-                'l': 'Low',
-                'c': 'Close',
-                'v': 'Volume'
-            }, inplace=True
+            df = pd.DataFrame(get_price_one_year(symbol, date.today()))
+            df["t"] = pd.to_datetime(df["t"], unit="s")
+            # df['t'] = df['t'].dt.strftime('%Y-%m-%d')
+
+            df.rename(
+                columns={
+                    "o": "Open",
+                    "h": "High",
+                    "l": "Low",
+                    "c": "Close",
+                    "v": "Volume",
+                },
+                inplace=True,
             )
 
             # Set the DataFrame index to the datetime column
-            df.set_index('t', inplace=True)
+            df.set_index("t", inplace=True)
 
             # Create the candlestick plot
-            mpf.plot(df, type='candle', style='charles', ylabel='Price')
+            mpf.plot(df, type="candle", style="charles", ylabel="Price")
 
             # Create the candlestick plot with modified parameters
-            fig, ax = mpf.plot(df, type='candle', style='charles', ylabel='Price', returnfig=True,
-                   figratio=(42, 21), scale_width_adjustment=dict(candle=0.8, candle_linewidth=0.8),
-                   title=f"{symbol} Stock Price for Last Year - Current Price: ${price}")
+            fig, ax = mpf.plot(
+                df,
+                type="candle",
+                style="charles",
+                ylabel="Price",
+                returnfig=True,
+                figratio=(42, 21),
+                scale_width_adjustment=dict(candle=0.8, candle_linewidth=0.8),
+                title=f"{symbol} Stock Price for Last Year - Current Price: ${price}",
+            )
 
             # Save the plot as an image
             img = io.BytesIO()
@@ -431,13 +456,9 @@ def quote():
             encoded = base64.b64encode(img.getvalue()).decode("utf-8")
             data_uri = "data:image/png;base64,{}".format(encoded)
 
-
-
             return render_template(
                 "quoted.html", symbol=symbol, price=usd(float(price)), plot=data_uri
             )
-        
-            
 
     # User reached route via GET
     else:
@@ -479,8 +500,10 @@ def register():
         else:
             db_connection.execute(
                 "INSERT INTO users (username, hash) VALUES (?, ?);",
-                (username,
-                generate_password_hash(password),)
+                (
+                    username,
+                    generate_password_hash(password),
+                ),
             )
 
             # Get user id
@@ -490,9 +513,11 @@ def register():
 
             db_connection.execute(
                 "INSERT INTO cash_upload (user_id, date, cash_amount) VALUES (?, ?, ?);",
-                (user_id,
-                 date.today(),
-                    10000,)
+                (
+                    user_id,
+                    date.today(),
+                    10000,
+                ),
             )
 
         return redirect("/")
@@ -511,7 +536,7 @@ def sell():
     user_id = session["user_id"]
     portfolio = db_connection.execute(
         "SELECT symbol, SUM(shares) AS shares FROM orders WHERE user_id=? GROUP BY symbol;",
-        (user_id,)
+        (user_id,),
     )
     stocks_to_sell = [stock["symbol"] for stock in portfolio]
     print(stocks_to_sell)
@@ -546,19 +571,25 @@ def sell():
                     # Put order in oders table
                     db_connection.execute(
                         "INSERT INTO orders (symbol, price, shares, user_id, date) VALUES (?, ?, ?, ?, datetime());",
-                        (symbol,
-                        price,
-                        -shares_to_sell,
-                        user_id,)
+                        (
+                            symbol,
+                            price,
+                            -shares_to_sell,
+                            user_id,
+                        ),
                     )
 
                     # Update cash in users table
-                    cash = db_connection.execute("SELECT cash FROM users WHERE id = ?;", (user_id,))[
-                        0
-                    ]["cash"]
+                    cash = db_connection.execute(
+                        "SELECT cash FROM users WHERE id = ?;", (user_id,)
+                    )[0]["cash"]
                     new_cash = float(cash) + shares_to_sell * float(price)
                     db_connection.execute(
-                        "UPDATE users SET cash = ? WHERE id = ?;", (new_cash, user_id,)
+                        "UPDATE users SET cash = ? WHERE id = ?;",
+                        (
+                            new_cash,
+                            user_id,
+                        ),
                     )
 
                     # Redirect to index
@@ -586,19 +617,29 @@ def cash():
         else:
             add_cash = int(request.form.get("cash"))
             user_id = session["user_id"]
-            cash = db_connection.execute("SELECT cash FROM users WHERE id = ?;", (user_id,))[0][
-                "cash"
-            ]
+            cash = db_connection.execute(
+                "SELECT cash FROM users WHERE id = ?;", (user_id,)
+            )[0]["cash"]
             new_cash = cash + add_cash
 
             # Update working cash in users table
-            db_connection.execute("UPDATE users SET cash = ? WHERE id = ?;", (new_cash, user_id,))
+            db_connection.execute(
+                "UPDATE users SET cash = ? WHERE id = ?;",
+                (
+                    new_cash,
+                    user_id,
+                ),
+            )
 
             # Make an entry in cash_upload table for calculation of total cash intake
-            db_connection.execute("INSERT INTO cash_upload (user_id, date, cash_amount) VALUES (?, ?, ?);",
-                                    (user_id,
-                                     date.today(),
-                                     add_cash,))
+            db_connection.execute(
+                "INSERT INTO cash_upload (user_id, date, cash_amount) VALUES (?, ?, ?);",
+                (
+                    user_id,
+                    date.today(),
+                    add_cash,
+                ),
+            )
             return redirect("/")
 
     # User reached route via GET
@@ -610,10 +651,11 @@ def cash():
 @login_required
 def leaderboard():
     """Let users compare their own performance to other users"""
-    ## Get Realized Long-Profits of all users 
+    ## Get Realized Long-Profits of all users
     # Get all sell orders with average buy price
-    profit_from_long = pd.DataFrame(db_connection.execute(
-                    """SELECT user_id, shares, price, avg_values.avg_p
+    profit_from_long = pd.DataFrame(
+        db_connection.execute(
+            """SELECT user_id, shares, price, avg_values.avg_p
                     FROM orders o
                     JOIN (
                         SELECT symbol, AVG(price) AS avg_p
@@ -622,31 +664,38 @@ def leaderboard():
                         GROUP BY symbol
                     ) avg_values ON o.symbol = avg_values.symbol
                     WHERE o.shares < 0;"""
-    ))
-    
+        )
+    )
+
     # For each user_id calculate the realized profit from long orders
     if not profit_from_long.empty:
-        profit_from_long["profit_long"] = (profit_from_long["price"] - profit_from_long["avg_p"]) * profit_from_long["shares"]
+        profit_from_long["profit_long"] = (
+            profit_from_long["price"] - profit_from_long["avg_p"]
+        ) * profit_from_long["shares"]
         profit_from_long = profit_from_long[["user_id", "profit_long"]]
         profit_from_long = profit_from_long.groupby("user_id").sum()
 
     ## Get Realized Short-Profits of all users
-    profit_from_short = pd.DataFrame(db_connection.execute(
-                    "SELECT user_id, profit FROM short WHERE rebuy_price IS NOT NULL;"
-    ))
+    profit_from_short = pd.DataFrame(
+        db_connection.execute(
+            "SELECT user_id, profit FROM short WHERE rebuy_price IS NOT NULL;"
+        )
+    )
     if not profit_from_short.empty:
         profit_from_short.rename(columns={"profit": "profit_short"}, inplace=True)
         profit_from_short = profit_from_short.groupby("user_id").sum()
 
     ## Get total Cash Uploads of all users
-    cash_uploads = pd.DataFrame(db_connection.execute(
-                    "SELECT user_id, cash_amount FROM cash_upload;"
-    ))
+    cash_uploads = pd.DataFrame(
+        db_connection.execute("SELECT user_id, cash_amount FROM cash_upload;")
+    )
     if not cash_uploads.empty:
         cash_uploads = cash_uploads.groupby("user_id").sum()
 
     ## Merge profit_from_long, profit_from_short into one dataframe based on user_id
-    df_leaderboard = pd.merge(profit_from_long, profit_from_short,  on="user_id", how="outer")
+    df_leaderboard = pd.merge(
+        profit_from_long, profit_from_short, on="user_id", how="outer"
+    )
 
     ## Merge df with cash_uploads into one dataframe based on user_id
     df_leaderboard = pd.merge(df_leaderboard, cash_uploads, on="user_id", how="outer")
@@ -660,8 +709,12 @@ def leaderboard():
     df_leaderboard.fillna(0, inplace=True)
 
     ## Calculate total profit in percent of cash_uploads and round to 2 decimals
-    df_leaderboard["total_profit"] = ((df_leaderboard["profit_long"] + df_leaderboard["profit_short"]) / df_leaderboard["cash_amount"] * 100).round(2)
-    
+    df_leaderboard["total_profit"] = (
+        (df_leaderboard["profit_long"] + df_leaderboard["profit_short"])
+        / df_leaderboard["cash_amount"]
+        * 100
+    ).round(2)
+
     ## Order dataframe by total_profit and add column "rank"
     df_leaderboard.sort_values(by="total_profit", ascending=False, inplace=True)
     df_leaderboard["rank"] = range(1, len(df_leaderboard) + 1)
@@ -721,11 +774,13 @@ def short():
             else:
                 db_connection.execute(
                     "INSERT INTO short (user_id, symbol, sell_price, shares, date, rebuy_date) VALUES (?, ?, ?, ?, datetime(), ?);",
-                    (user_id,
-                    symbol,
-                    price,
-                    shares,
-                    rebuy_date,)
+                    (
+                        user_id,
+                        symbol,
+                        price,
+                        shares,
+                        rebuy_date,
+                    ),
                 )
 
         return redirect("/")
@@ -733,4 +788,3 @@ def short():
     # User reached route via GET
     else:
         return render_template("short.html")
-    
