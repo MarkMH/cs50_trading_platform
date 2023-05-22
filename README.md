@@ -1,5 +1,5 @@
 # Trade better than your friends!
-#### Video Demo: https://youtu.be/<video_id>
+#### Video Demo: https://youtu.be/LQxyIAEMgSQ
 #### Description:
 In this final project for CS50's Introduction to Computer Science, we, Mark Marner-Hausen and Lennart Struth, built a web application that simulates a stock trading app. The app builds on the final problem set of the course but comes with significant extensions and refinements. In particular, it allows the individual user not only to take long positions, but also to hold short positions, and furthermore to compare their own performance with that of friends who also use the app. In this respect, the app can serve an educational purpose, firstly because it allows users to experiment with complex trading strategies without the risk of losing money, and secondly, because it offers the opportunity to rank one's own performance relative to other users. The latter can counteract overconfidence, a falacy that plays a significant role in financial market literature. On a more technical level, we avoided using CS50's SQL library by developing a class that handles DB connection and query execution for specific parameters, and we added graphical visualizations for the performance of individual stocks as well as the performance of one's own portfolio. 
 
