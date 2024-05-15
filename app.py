@@ -25,7 +25,7 @@ from helpers import (
     login_required,
     usd,
     finnhub_quote,
-    finnhub_candle,
+    yfinance_candle,
     convert_day_to_unix,
     current_time_in_unix,
     get_price_one_year,
@@ -103,7 +103,7 @@ def index():
             sell_price = float(short["sell_price"])
 
             # Get price from Finnhub and calculate profit
-            rebuy_price = float(finnhub_candle(symbol, rebuy_date)["price"])
+            rebuy_price = float(yfinance_candle(symbol, rebuy_date)["price"])
             profit = round(shares * (sell_price - rebuy_price), 2)
 
             # Update data base

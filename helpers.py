@@ -9,9 +9,9 @@ import time
 
 from flask import redirect, render_template, request, session
 from functools import wraps
+import yfinance as yf
 
-
-finnhub_client = finnhub.Client(api_key="cgg438hr01qgjoik89jgcgg438hr01qgjoik89k0")
+finnhub_client = finnhub.Client(api_key="cp1nts9r01qhquus8te0cp1nts9r01qhquus8teg")
 
 
 def apology(message, code=400):
@@ -69,17 +69,14 @@ def get_price_one_year(symbol, date):
     
     return finnhub_client.stock_candles(symbol, 'D', start_day, end_day)
     
-    
 
 
-def finnhub_candle(symbol, date):
-    end_unix = date
-    start_unix = end_unix - 72000
-    candle = finnhub_client.stock_candles(symbol, "D", start_unix, end_unix)
+def yfinance_candle(symbol, date):
+    data = yf.download(symbol, start=date, end=date)
     try:
-        return {"price": float(candle["c"][0]), "symbol": symbol.upper()}
+        return {"price": float(data['Close'][0]), "symbol": symbol.upper()}
     except:
-        return {"price": float(candle["o"][0]), "symbol": symbol.upper()}
+        return {"price": float(data['Open'][0]), "symbol": symbol.upper()}
 
 
 # Convert a datetime to the unix time of that day (or the next weekday) on 11:00 PM
